@@ -166,13 +166,41 @@ vector<float> pcdReader::readBody(size_t numSurfels)
 
    result.reserve(numSurfels * 4);
 
-   const unsigned int numFields = 3; //xyz
+   const int numFields = 3; //xyz
 
-   for (unsigned int i = 0; i < numSurfels; ++i)
+   for (int i = 0; i < (int) numSurfels; ++i)
    {
-      for (unsigned int j = 0; j < numFields; ++j)
+      int j = 0;
+
+      try //because stof() can throw
       {
-	 result.push_back(stof(getWordOnLine()));
+	 for (; j < numFields; ++j)
+	 {
+	    getWordOnLine();
+
+	    float wordBinary = stof(word);
+	    
+	    result.push_back(wordBinary);
+	 }
+      }
+
+      //catch (const invalid_argument& inv)
+      //catch (const out_of_range& ran)
+      catch (const exception&)
+      {
+	 cerr << "Surfel row " << i << ", component " << j << " couldn't be read. Ignoring this surfel." << endl;
+
+	 //Write over this surfel by popping from result
+	 //NB since catch gotos, this current 'j' won't have
+	 //pushed yet. So if j is 0, none to pop
+	 for (int k = 0; k < j; ++k)
+	 {
+	    result.pop_back();
+	 }
+
+	 //Escape from below push_back
+	 getLine();
+	 continue;
       }
 
       //w
@@ -295,7 +323,7 @@ void sdlInstance::prep()
    {
       //TODO throw, etc.
       
-      cout << "Glad failed to load some OpenGL function." << endl;
+      cerr << "Glad failed to load some OpenGL function." << endl;
    }
 
    //TODO change
@@ -732,6 +760,8 @@ void image::clear()
 
 void buffer::prep(vector<float> data, GLuint binding)
 {
+   nBytes = sizeof(float) * data.size();
+
    glGenBuffers(1, &handle);
 
    glBindBuffer(GL_SHADER_STORAGE_BUFFER, handle);
@@ -743,7 +773,7 @@ void buffer::prep(vector<float> data, GLuint binding)
    //indeterminately-sized arrays at shader invocation time anyway...
    
    glBufferData(GL_SHADER_STORAGE_BUFFER,
-		data.size() * sizeof(float),
+		data.size(),
 		data.data(),
 		GL_STATIC_DRAW);
 
@@ -785,23 +815,17 @@ void surfelModel::prep(const string fileName, GLuint binding)
 
    pcd.prep(fileName);
 
-   vector<float> load;
+   vector<float> load = pcd.read();
 
-   try
-   {
-      load = pcd.read();
-   }
-
-   catch (const exception e) { cerr << e.what() << endl; }
-
-   if (load.size() % (4 * sizeof(uint32_t))) { throw invalid_argument("Surfel input data not divisible into groups of 4 floats"); }
+   if (load.size() % 4) { throw invalid_argument("Surfel input data not divisible into groups of 4 floats"); }
 
    data.prep(load, binding);
 }
 
 size_t surfelModel::getNumSurfels() const
 {
-   return data.size() / 4;
+   //NB buffer::size() gives bytes (confusingly! TODO)
+   return (data.size() / sizeof(float)) / 4;
 }
 
 static const uint32_t comp1ThreadsPerWkgp = 1;
