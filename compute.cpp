@@ -28,10 +28,9 @@ string getErrorGL()
 
 void pcdReader::prep(const string filename)
 {
-   if ((filename[filename.size() - 4] != '.') ||
-       (filename[filename.size() - 3] != 'p') ||
-       (filename[filename.size() - 2] != 'c') ||
-       (filename[filename.size() - 1] != 'd'))
+   if ((filename.size() < 5) ||
+       //-1 to get to last, -3 to get to '.'
+       (filename.substr(filename.size() - 4) != ".pcd"))
    { throw invalid_argument("File name given, \"" + filename + "\", was not a .pcd"); }
 
    file.open(filename, ifstream::in);
@@ -45,10 +44,6 @@ void pcdReader::prep(const string filename)
 
    getLine();
    getWord();
-
-   #if 0
-   getChar();
-   #endif
 }
 
 void pcdReader::getPlace(streampos& fileSave,
@@ -144,133 +139,16 @@ bool pcdReader::seekWord(string str)
    return true;
 }
 
-#if 0
-char pcdReader::getChar()
-{
-   return cur = file.get();
-}
-#endif
-
-#if 0
-string pcdReader::getWord()
-{
-   string word;
-
-   //Power through until you hit a character   
-   while ((cur == ' ') || (cur == '\n'))
-   {
-      if (cur == char_traits<char>::eof()) { return word; }
-
-      getChar();
-   }
-
-   while (cur != char_traits<char>::eof())
-   {
-      bool whitespace = (cur == ' ') || (cur == '\n');
-
-      if (!whitespace) { word.push_back(cur); }
-
-      else break;
-   }
-
-   return move(word);
-}
-#endif
-
-#if 0
-bool pcdReader::seekStr(string str)
-//Specifically, seek til -after- the string
-{
-   while (true)
-   {
-      bool abort = false;
-
-      for (unsigned int i = 0; i < str.size(); ++i)
-      {
-	 if (cur == char_traits<char>::eof()) { return false; }
-
-	 if (cur != str[i])
-	 {
-	    break;
-	 }
-
-	 //This includes the last letter of the string (it should do).
-	 getChar();
-      }
-
-      //If the whole sequence succeeded, you're there
-      if (!abort) { return true; }
-   }
-
-   return true;
-}
-#endif
-
 size_t pcdReader::readHeader()
 {
-#if 0
-   if (!seekWord("FIELDS")) { throw invalid_argument("Invalid .pcd file: no 'FIELDS' section"); }
-
-   //See whether colour/normals are included; they will be ignored
-
-   numFields = 0;
-   
-   while (word.size())
-   {
-      ++numFields;
-
-      getWordOnLine(); //TODO this loops; change
-   }
-#endif
-   
-   #if 0
-   //ie, within this line...
-   while (cur != '\n')
-   {
-      if (cur == char_traits<char>::eof()) { return 0; }
-
-      //Checking # of strings delimited by whitespace
-      if (cur != ' ')
-      {
-	 ++numFields;
-	 
-	 while (cur != ' ')
-	 {
-	    if (cur == '\n') { break; }
-
-	    getChar();
-
-	    if (cur == char_traits<char>::eof()) { return 0; }
-	 }
-      }
-   }
-   #endif
-
    //Optional TODO actually check types, etc.
    //Not particularly useful at the moment.
-
-   size_t numSurfels = 0;
 
    if (!seekWord("POINTS")) { throw invalid_argument("Invalid .pcd file: no 'POINTS' section"); }
 
    if (!word.size()) { throw invalid_argument("No surfels in .pcd file"); }
 
-   numSurfels = stoi(word);
-
-   #if 0
-   string pts;
-
-   while (cur != '\n')
-   {
-      if (cur == char_traits<char>::eof()) { return 0; }
-
-      pts.push_back(cur);
-
-      getChar();
-   }
-
-   numSurfels = stoi(pts);
-   #endif
+   size_t numSurfels = stoi(word);
 
    //TODO support 'DATA binary' files, too?
 
@@ -288,8 +166,7 @@ vector<float> pcdReader::readBody(size_t numSurfels)
 
    result.reserve(numSurfels * 4);
 
-   //This is artificial and temporary
-   numFields = 3;
+   const unsigned int numFields = 3; //xyz
 
    for (unsigned int i = 0; i < numSurfels; ++i)
    {

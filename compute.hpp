@@ -16,19 +16,8 @@ class pcdReader
 {
 private:
    ifstream file;
-
-//string line;
-   istringstream line;
-   string word;
-   
-//   char cur; //
-
-   size_t numFields;
-
-//   char getChar(); //
-//   const string& getLine();
-//   string getWord(); //
-//   bool seekStr(string str);
+   istringstream line; //Buffer for line
+   string word; //Buffer for a word in the line
 
    const string& getWord();
    const string& getWordOnLine();
@@ -44,7 +33,6 @@ private:
    vector<float> readBody(size_t numSurfels);
 
 public:
-   pcdReader() : numFields (0) {}   
    ~pcdReader() { file.close(); }
    
    void prep(const string filename);
