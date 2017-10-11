@@ -110,6 +110,8 @@ public:
    void quit();
 
    void use();
+
+   GLuint getHandle();
 };
 
 class image
@@ -195,4 +197,29 @@ public:
    void prep(const string fileName, GLuint binding);
    
    void render();
+};
+
+//TODO: move these to separate file
+struct vec3 { float x, y, z; };
+struct mat4 { float data[16]; };
+
+class frustum
+{
+private:
+   vec3 pos; //Position
+   vec3 dirZ, dirY; //Z and Y axes (rotation)
+   float horFov, verFov; //Fields of view
+   float nearDZ, planesDZ; //distance from position to near plane;
+			   //from near plane to far plane
+
+   float getFarDZ() const;
+
+public:
+   frustum(vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
+	   float nuHorFov, float nuVerFov,
+	   float nuNearDZ, float nuPlanesDZ)
+      : pos(nuPos), dirZ (nuDirZ), dirY (nuDirY), horFov (nuHorFov), verFov (nuVerFov), nearDZ (nuNearDZ), planesDZ (nuPlanesDZ)
+   {}
+   
+   mat4 getPerspectiveMatrix() const;
 };

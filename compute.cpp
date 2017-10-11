@@ -2,6 +2,7 @@
 #include "compute.hpp"
 #include <iostream>
 #include <cstring>
+#include <cmath>
 
 string getErrorGL()
 {
@@ -639,6 +640,8 @@ void program::use()
    glUseProgram(handle);
 }
 
+GLuint program::getHandle() { return handle; }
+
 bool framebuffer::prep(image& img)
 {
    glGenFramebuffers(1, &handle);
@@ -856,6 +859,35 @@ void surfelModel::render()
 		     1);
 }
 
+float radians(float deg)
+{
+   return deg * 180.f / 3.14159265358979323846;
+}
+
+float frustum::getFarDZ() const
+{
+   return planesDZ - nearDZ;
+}
+
+mat4 frustum::getPerspectiveMatrix() const
+{
+   //
+   float posX = tan(radians(horFov) / 2.f);
+   float posY = tan(radians(verFov) / 2.f);
+
+   //These are just elements of the matrix - which is pretty specific
+   float zRow = 2 * nearDZ / planesDZ + 1;
+   float wRow = -2.f * getFarDZ() * nearDZ / planesDZ;
+
+   //TODO here or elsewhere in further matrix to be multiplied: figure
+   //in the aspect ratio
+
+   return mat4 {.data = { 1.f / posX, 0.f, 0.f, 0.f,
+			  0.f, 1.f / posY, 0.f, 0.f,
+			  0.f, 0.f, zRow, 1.f,
+			  0.f, 0.f, wRow, 0.f }};
+}
+
 int main(int argc, char** args)
 {
    SDL_SetMainReady();
@@ -901,6 +933,24 @@ int main(int argc, char** args)
 
    //TODO: clear stuff first time, without using instance.swapWindow()
 
+   //Uniform stuff for the first time (e.g. perspective matrix)
+   frustum camera = frustum(vec3 {.x = 0.0, .y = 0.0, .z = 0.0},
+			    vec3 {.x = 0.0, .y = 0.0, .z = 1.0},
+			    vec3 {.x = 0.0, .y = 1.0, .z = 0.0},
+			    65.f, 65.f, //TODO should fov depend on
+					//aspect ratio?
+			    0.5, 40.f);
+
+   mat4 perspective = camera.getPerspectiveMatrix();
+
+   GLint perspectiveLoc = glGetUniformLocation(surfelsToSamples.getHandle(),
+					       "perspective");
+   
+   glUniformMatrix4fv(perspectiveLoc,
+		      1,
+		      false,
+		      (GLfloat*) &perspective.data);
+
    int winX, winY;
 
    while (!instance.checkQuit())
@@ -909,6 +959,7 @@ int main(int argc, char** args)
       //with it.      
       if (instance.getWindowSize(winX, winY))
       {
+	 //These also do associated uniforms
 	 samples.resize(winX * 2, winY * 2);
 	 pixels.resize(winX, winY);
 
@@ -917,7 +968,14 @@ int main(int argc, char** args)
 	 //glFramebufferTexture afaik)
 	 //Note that if you don't - and shaders use imageSize to
 	 //figure out indexing - then they will be accessing garbage
+
+	 //TODO: perspective matrix will need re-uniforming since it
+	 //will have aspect ratio baked in
+	 //Since camera movement will re-uniform it anyway later, best
+	 //just to do it there
       }
+
+      //TODO: (if camera movement) re-uniform perspective matrix
 
       surfelsToSamples.use();
 
@@ -951,6 +1009,8 @@ int main(int argc, char** args)
       
       glClear(GL_COLOR_BUFFER_BIT);
    }
+
+   cerr << getErrorGL() << endl; //Temporary (TODO)
 
    return 0;
 }
