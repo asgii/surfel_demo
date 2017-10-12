@@ -888,6 +888,16 @@ mat4 frustum::getPerspectiveMatrix() const
 			  0.f, 0.f, wRow, 0.f }};
 }
 
+void camera::pushPerspectiveMatrix()
+{
+   mat4 persp = getPerspectiveMatrix();
+
+   glUniformMatrix4fv(perspectiveLoc,
+		      1,
+		      false,
+		      (GLfloat*) &persp.data);
+}
+
 int main(int argc, char** args)
 {
    SDL_SetMainReady();
@@ -934,23 +944,17 @@ int main(int argc, char** args)
    //TODO: clear stuff first time, without using instance.swapWindow()
 
    //Uniform stuff for the first time (e.g. perspective matrix)
-   frustum camera = frustum(vec3 {.x = 0.0, .y = 0.0, .z = 0.0},
-			    vec3 {.x = 0.0, .y = 0.0, .z = 1.0},
-			    vec3 {.x = 0.0, .y = 1.0, .z = 0.0},
-			    65.f, 65.f, //TODO should fov depend on
-					//aspect ratio?
-			    0.5, 40.f);
-
-   mat4 perspective = camera.getPerspectiveMatrix();
-
    GLint perspectiveLoc = glGetUniformLocation(surfelsToSamples.getHandle(),
 					       "perspective");
-   
-   glUniformMatrix4fv(perspectiveLoc,
-		      1,
-		      false,
-		      (GLfloat*) &perspective.data);
 
+   camera cam = camera(perspectiveLoc,
+		       vec3 {.x = 0.0, .y = 0.0, .z = 0.0},
+		       vec3 {.x = 0.0, .y = 0.0, .z = 1.0},
+		       vec3 {.x = 0.0, .y = 1.0, .z = 0.0},
+		       65.f, 65.f, //TODO should fov depend on
+		       //aspect ratio?
+		       0.5, 40.f);
+   
    int winX, winY;
 
    while (!instance.checkQuit())

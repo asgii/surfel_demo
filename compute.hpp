@@ -205,7 +205,7 @@ struct mat4 { float data[16]; };
 
 class frustum
 {
-private:
+protected:
    vec3 pos; //Position
    vec3 dirZ, dirY; //Z and Y axes (rotation)
    float horFov, verFov; //Fields of view
@@ -218,8 +218,29 @@ public:
    frustum(vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
 	   float nuHorFov, float nuVerFov,
 	   float nuNearDZ, float nuPlanesDZ)
-      : pos(nuPos), dirZ (nuDirZ), dirY (nuDirY), horFov (nuHorFov), verFov (nuVerFov), nearDZ (nuNearDZ), planesDZ (nuPlanesDZ)
+      : pos(nuPos)
+      , dirZ (nuDirZ), dirY (nuDirY)
+      ,	horFov (nuHorFov), verFov (nuVerFov)
+      ,	nearDZ (nuNearDZ), planesDZ (nuPlanesDZ)
    {}
    
    mat4 getPerspectiveMatrix() const;
+};
+
+class camera : public frustum
+{
+protected:
+   GLint perspectiveLoc;
+   
+public:
+   camera(GLint perspLoc, vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
+	  float nuHorFov, float nuVerFov,
+	  float nuNearDZ, float nuPlanesDZ)
+      : frustum(nuPos, nuDirZ, nuDirY,
+		nuHorFov, nuVerFov,
+		nuNearDZ, nuPlanesDZ)
+      , perspectiveLoc (perspLoc)
+   {}
+   
+   void pushPerspectiveMatrix();
 };
