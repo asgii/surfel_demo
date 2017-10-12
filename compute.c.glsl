@@ -20,7 +20,7 @@ layout (std430, binding = 1) buffer surfelsBlock
 
 uniform mat4 perspective;
 
-layout (r32ui, binding = 7) uniform uimage2D samples; //Output
+layout (r32ui, binding = 1) uniform uimage2D samples; //Output
 
 layout (location = 3) uniform uint samplesX;
 layout (location = 4) uniform uint samplesY;

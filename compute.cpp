@@ -27,6 +27,13 @@ string getErrorGL()
    }
 }
 
+void printErrorGL()
+{
+   string err = getErrorGL();
+
+   if (err.size()) { cerr << "GL error at " << __FILE__ << ", " << __LINE__ << ": " << err << endl; }
+}
+
 void pcdReader::prep(const string filename)
 {
    if ((filename.size() < 5) ||
@@ -551,9 +558,7 @@ bool shader::prep(GLuint program)
 	 cerr << ":" << endl << infoLog << endl;
 	 #endif
 
-	 string error = getErrorGL();
-
-	 if (error.size()) { cerr << ": " << error << endl; }
+	 printErrorGL();
       }
 
       else { cerr << endl; }
@@ -614,9 +619,7 @@ bool program::prep()
 
       else { cerr << endl; }
 
-      string error = getErrorGL();
-
-      if (error.size()) { cerr << error << endl; }
+      printErrorGL();
 
       return false;
    }
@@ -663,10 +666,12 @@ void framebuffer::quit()
    glDeleteFramebuffers(1, &handle);
 }
 
-void image::prep(GLsizei width, GLsizei height)
+void image::prep(GLuint width, GLuint height)
 {
    glGenTextures(1, &handle);
    glBindTexture(GL_TEXTURE_2D, handle);
+
+   printErrorGL();
 
    glTexImage2D(GL_TEXTURE_2D,
 		0, //lod
@@ -678,8 +683,12 @@ void image::prep(GLsizei width, GLsizei height)
 		GL_UNSIGNED_BYTE,
 		nullptr);
 
+   //
+
    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+   printErrorGL();
 
    //TODO checks
 
@@ -692,6 +701,8 @@ void image::prep(GLsizei width, GLsizei height)
    //(So xLoc and yLoc will be part of the constructor.)
    
    pushSize();
+
+   printErrorGL();
 }
 
 void image::quit()
@@ -710,7 +721,7 @@ void image::use(GLuint binding)
 		      GL_RGBA32UI);
 }
 
-void image::resize(GLsizei width, GLsizei height)
+void image::resize(GLuint width, GLuint height)
 {
    /*
      Overcomplicated method of reducing time spent resizing:
@@ -744,6 +755,8 @@ void image::resize(GLsizei width, GLsizei height)
 
 void image::pushSize()
 {
+   //NB: uniforms have to be done while a shader (the right one) is being used.
+
    glUniform1ui(xLoc, x);
    glUniform1ui(yLoc, y);
 }
@@ -907,14 +920,33 @@ int main(int argc, char** args)
    
    program samplesToPixels = program("compute2.c.glsl");
 
+   printErrorGL();
+
+   //Programs have to be used while uniforms are loaded
+   surfelsToSamples.use();
    //The arguments are ad hoc bindings, from the shaders
    image samples = image(3, 4);
+
+   printErrorGL();
+
+   samplesToPixels.use();
    image pixels = image(5, 6);
+
+   printErrorGL();
 
    pixels.prep(SCRN_WIDTH, SCRN_HEIGHT);
    samples.prep(SCRN_WIDTH * 2, SCRN_HEIGHT * 2);
 
+   printErrorGL();
+
+   samples.use(1);
+   pixels.use(2);
+
+   printErrorGL();
+
    surfelModel surfels;
+
+   printErrorGL();
 
    const GLuint surfelsBinding = 1;
    string fileName;
@@ -938,6 +970,8 @@ int main(int argc, char** args)
       return 1;
    }
 
+   printErrorGL();
+
    //TODO: framebuffer stuff? shader needs to write
    //directly/indirectly
 
@@ -947,6 +981,8 @@ int main(int argc, char** args)
    GLint perspectiveLoc = glGetUniformLocation(surfelsToSamples.getHandle(),
 					       "perspective");
 
+   printErrorGL();
+
    camera cam = camera(perspectiveLoc,
 		       vec3 {.x = 0.0, .y = 0.0, .z = 0.0},
 		       vec3 {.x = 0.0, .y = 0.0, .z = 1.0},
@@ -954,8 +990,17 @@ int main(int argc, char** args)
 		       65.f, 65.f, //TODO should fov depend on
 		       //aspect ratio?
 		       0.5, 40.f);
+
+   printErrorGL();
+
+   surfelsToSamples.use();
+   cam.pushPerspectiveMatrix();
+
+   printErrorGL();
    
    int winX, winY;
+
+   printErrorGL();
 
    while (!instance.checkQuit())
    {
@@ -983,7 +1028,11 @@ int main(int argc, char** args)
 
       surfelsToSamples.use();
 
+      printErrorGL();
+
       surfels.render();
+
+      printErrorGL();
       
       //Primitive inter-pipeline barrier
       glFlush();
@@ -993,6 +1042,10 @@ int main(int argc, char** args)
 
       samplesToPixels.use();
 
+      printErrorGL();
+
+      //TODO check workgroup maximums
+
       uint32_t xWkgps, yWkgps;
 
       getWkgpDimensions(xWkgps, yWkgps, comp2ThreadsPerWkgp, winX * winY);
@@ -1001,20 +1054,26 @@ int main(int argc, char** args)
 			yWkgps,
 			1);
 
+      printErrorGL();
+
       glFlush(); //Executes any lazy command buffers
       glFinish(); //Blocks til they're done
 
       instance.swapWindow();
 
+      printErrorGL();
+
       samples.clear();
       pixels.clear();
+
+      printErrorGL();
 
       //TODO may have to reattach pixels, since change in fb...?
       
       glClear(GL_COLOR_BUFFER_BIT);
-   }
 
-   cerr << getErrorGL() << endl; //Temporary (TODO)
+      printErrorGL();
+   }
 
    return 0;
 }

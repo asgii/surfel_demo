@@ -125,7 +125,7 @@ private:
      x, y as uniforms to figure out accessing patterns. That way you
      don't have to reallocate when the image shrinks.
    */
-   GLsizei x, y;
+   GLuint x, y;
    GLint xLoc, yLoc;
 
    //Upload x, y as uniforms
@@ -141,11 +141,11 @@ public:
    {}
    ~image() { quit(); }
    
-   void prep(GLsizei width, GLsizei height);
+   void prep(GLuint width, GLuint height);
    void quit();
 
    void use(GLuint binding);
-   void resize(GLsizei width, GLsizei height);
+   void resize(GLuint width, GLuint height);
    void clear();
 
    GLuint getHandle() { return handle; }

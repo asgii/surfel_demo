@@ -29,12 +29,12 @@ layout (local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
 
 //Still includes depth at x, so it can be put in that way in
 //previous stage; this stage must sort that out
-layout (rgba8ui, binding = 7) readonly uniform uimage2D samples;
+layout (rgba8ui, binding = 1) readonly uniform uimage2D samples;
 layout (location = 3) uniform uint samplesX;
 layout (location = 4) uniform uint samplesY;
 
 //The final image
-writeonly uniform uimage2D pixels;
+layout (binding = 2) writeonly uniform uimage2D pixels; //TODO binding
 layout (location = 5) uniform uint pixelsX;
 layout (location = 6) uniform uint pixelsY;
 
