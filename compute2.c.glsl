@@ -45,25 +45,28 @@ uvec4 samp(ivec2 imageCoords)
 
    //Let's say for simplicity there are just 4x samples.
    //imageCoords are specifically coords for the final image, not the
-   //samples buffer.
+   //samples buffer. Hence x2 below.
 
    uvec4 mix = uvec4(0.0);
 
-   for (uint i = 0; i < 4; ++i)
-   {
-      mix += imageLoad(samples, ivec2(imageCoords.x * 2 + i / 2,
-				      imageCoords.y * 2 + mod(i, 2))) / 4;
-   }
+   ivec2 baseCoords = imageCoords * 2;
+
+   mix += imageLoad(samples, baseCoords) / 4;
+   mix += imageLoad(samples, ivec2(baseCoords.x + 1, baseCoords.y)) / 4;
+   mix += imageLoad(samples, baseCoords + 1) / 4;
+   mix += imageLoad(samples, ivec2(baseCoords.x, baseCoords.y + 1)) / 4;
 
    //Swizzle because of zrgb in samples
-   return uvec4(mix.xyz, 0.0);
+   return uvec4(mix.xyz, 1.0);
 }
 
 void main()
 {
+   //In this shader each invocation should be assigned a specific
+   //pixel (like a fragment shader with a fragment).
    const ivec2 coords = ivec2 (gl_GlobalInvocationID.xy);
 
    imageStore(pixels,
 	      coords,
-	      uvec4(samp(coords).gba, 1)); //r is depth in samples.
+	      samp(coords));
 }
