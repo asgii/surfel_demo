@@ -719,15 +719,20 @@ void image::quit()
    glDeleteTextures(1, &handle);
 }
 
-void image::use(GLuint binding)
+void image::use(GLuint binding, GLenum access)
 {
+   //This 'binds' 'images' to 'texture units'.
+   //Formats are ok with different in-shader accesses as long as
+   //they're 'compatible'. R32UI (ie a 32bit red) is compatible with
+   //RGBA8UI (ie a 32bit vector) - it's mainly about size.
+
    glBindImageTexture(binding,
 		      handle,
 		      0, //level
 		      GL_FALSE, //layered
 		      0, //layer
-		      GL_READ_WRITE, //Clearly, could have a different class
-		      GL_RGBA32UI);
+		      access,
+		      GL_RGBA8UI); //Could benefit from another param
 }
 
 void image::resize(GLuint width, GLuint height)
@@ -773,14 +778,13 @@ void image::pushSize()
 void image::clear()
 {
    /*
-     NB 2's complement issues in the shader (uvec4(0,0,0) differing
-     from uint(0)) don't apply in the case of samples, since they only
-     need to be cleared for the sake of atomicMax.
-   
-     However, this does mean that 2 different values of clear are
-     needed: one for samples (uint(0)) and one for pixels
-     (uvec4(0,0,0,0)). Hence image::clearValue.
+     It's fine to use 0 whether you use the texture as vec4(0, 0, 0,
+     0) or uint(0), because it's unsigned.
+
+     Unusually (?) RGBA reads 4 uints here. Just GL_RED puts alpha to 1.0!
    */
+   
+   static const uint32_t clearValue[4] = {0, 0, 0, 0};
    
    glClearTexSubImage(handle,
 		      0, //level
@@ -788,7 +792,7 @@ void image::clear()
 		      x, y, 1, //1: depth
 		      GL_RGBA,
 		      GL_UNSIGNED_INT,
-		      &clearValue);
+		      clearValue);
 }
 
 void buffer::prep(vector<float> data, GLuint binding)
@@ -861,32 +865,78 @@ size_t surfelModel::getNumSurfels() const
    return (data.size() / sizeof(float)) / 4;
 }
 
-static const uint32_t comp1ThreadsPerWkgp = 1;
-static const uint32_t comp2ThreadsPerWkgp = 90 * 90;
+static const uint32_t comp1LocalX = 64;
+static const uint32_t comp1LocalY = 1;
+static const uint32_t comp2LocalX = 1024;
+static const uint32_t comp2LocalY = 1;
 
-void getWkgpDimensions(uint32_t& x, uint32_t& y,
-		       uint32_t threadsPerWkgp,
-		       uint32_t threads)
+bool getWkgpDimensions(uint32_t& xWkgps, uint32_t& yWkgps,
+		       uint32_t localX, uint32_t localY,
+		       uint32_t reqGlobalX, uint32_t reqGlobalY)
 {
-   const float numWkgps = threads / threadsPerWkgp;
+   /*
+     Can't simply rely on the sum total threads needed and the sum
+     total of the workgroup size, because coords will be affected by
+     the local size along y, and because (in the case of screens being
+     rendered to) there will be specific needs for y dimensionality in
+     global invocations.
 
-   const uint32_t floor = sqrt(numWkgps);
+     (It'd be ok if you agreed to keep workgroup size 1D. But in the 
+     case of image processing in 'pixels' buffer, there's an obvious 
+     advantage for occupancy available.)
 
-   const uint32_t remainder = numWkgps - floor;
+     NB. GL limits involve max numbers of workgroups along
+     dimensions. Assuming the shader is using the invocation index as
+     part of a coordinate, it's not very helpful to know that you're
+     over the max. You couldn't do a second pass since there's no
+     'base index' in compute shaders; you couldn't start from a higher
+     index so you could fit the difference between required and max
+     into the max.
+     You could do this if you put in a base index as a uniform. Not
+     sure how that'd work with 'dynamically uniform' accesses etc., though.
 
-   y = floor;
-   x = floor + remainder / y + 1;
+     Potential TODO: this is a potentially wasteful approach. Ideally
+     you'd want to change the local sizes within the shader,
+     dynamically, too.
+
+     What if you only want 1D (and therefore call this
+     with (someNumber, 1)) but the shader has a local y of 64?
+     I don't think this is avoidable though - in that case, the shader
+     would have coordinates that depended on their local y. You
+     couldn't reduce the number of x's dispatched because you couldn't
+     substitute y for x.
+     Note that since the shader gets the workgroup numbers as in-built
+     variables, that would be the place to work around that.
+   */
+
+   //These aren't the max globals (ie # invocations). They're max -numbers- of workgroups.
+   GLint maxXWkgps, maxYWkgps;
+
+   glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT,
+		   0,
+		   &maxXWkgps);
+
+   glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT,
+		   1,
+		   &maxYWkgps);
+
+   //Add 1 if it doesn't cleanly divide. (1 because division rounds down)
+   xWkgps = reqGlobalX / localX + ((reqGlobalX % localX)? 1 : 0);
+   yWkgps = reqGlobalY / localY + ((reqGlobalY % localY)? 1 : 0);
+
+   if ((xWkgps > (uint32_t) maxXWkgps) || (yWkgps > (uint32_t) maxYWkgps))
+   {
+      return false;
+   }
+
+   else { return true; }
 }
 
 void surfelModel::render()
 {
    uint32_t xWkgps, yWkgps;
-
-   //getWkgpDimensions(xWkgps, yWkgps, comp1ThreadsPerWkgp,
-   //getNumSurfels());
-
-   xWkgps = getNumSurfels();
-   yWkgps = 1;
+      
+   getWkgpDimensions(xWkgps, yWkgps, comp1LocalX, comp1LocalY, getNumSurfels(), 1);
 
    glDispatchCompute(xWkgps,
 		     yWkgps,
@@ -937,34 +987,31 @@ int main(int argc, char** args)
    SDL_SetMainReady();
    sdlInstance instance;
 
-   program surfelsToSamples = program("compute.c.glsl");
-   
+   program surfelsToSamples = program("compute.c.glsl");   
    program samplesToPixels = program("compute2.c.glsl");
 
    printErrorGL(__FILE__, __LINE__);
 
    //Programs have to be used while uniforms are loaded
    surfelsToSamples.use();
-   //The first 2 arguments are ad hoc bindings, from the shaders
-   image samples = image(3, 4, 0);
-
-   printErrorGL(__FILE__, __LINE__);
-
-   uint8_t zero = 0;
-   uint32_t clearVec = (zero << 24) | (zero << 16) | (zero << 8) | zero;
+   //The first 2 arguments are ad hoc bindings, from the shaders - for wid/height
+   image samples = image(3, 4);
    
+   printErrorGL(__FILE__, __LINE__);
+
    samplesToPixels.use();
-   image pixels = image(5, 6, clearVec);
+   image pixels = image(5, 6);
 
    printErrorGL(__FILE__, __LINE__);
 
-   pixels.prep(SCRN_WIDTH, SCRN_HEIGHT);
    samples.prep(SCRN_WIDTH * 2, SCRN_HEIGHT * 2);
+   pixels.prep(SCRN_WIDTH, SCRN_HEIGHT);
 
    printErrorGL(__FILE__, __LINE__);
 
-   samples.use(1);
-   pixels.use(2);
+   //Bind images to texture units
+   samples.use(1, GL_READ_WRITE);
+   pixels.use(2, GL_WRITE_ONLY);
 
    printErrorGL(__FILE__, __LINE__);
 
@@ -1001,11 +1048,17 @@ int main(int argc, char** args)
    samples.clear();
    pixels.clear();
 
+   printErrorGL(__FILE__, __LINE__);
+
    framebuffer frame;
 
    frame.prep(pixels);
 
+   printErrorGL(__FILE__, __LINE__);
+
    frame.use();
+
+   printErrorGL(__FILE__, __LINE__);
 
    //Uniform stuff for the first time (e.g. perspective matrix)
    GLint perspectiveLoc = glGetUniformLocation(surfelsToSamples.getHandle(),
@@ -1063,28 +1116,25 @@ int main(int argc, char** args)
       surfels.render();
 
       printErrorGL(__FILE__, __LINE__);
-      
-      //Primitive inter-pipeline barrier
-      glFlush();
-      glFinish();
 
-      //TODO Better to put a barrier in the following shader?
+      glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
       samplesToPixels.use();
 
       printErrorGL(__FILE__, __LINE__);
 
       //TODO check workgroup maximums
-
       uint32_t xWkgps, yWkgps;
-
-      getWkgpDimensions(xWkgps, yWkgps, comp2ThreadsPerWkgp, winX * winY);
+      
+      getWkgpDimensions(xWkgps, yWkgps, comp2LocalX, comp2LocalY, winX, winY);
 
       glDispatchCompute(xWkgps,
 			yWkgps,
 			1);
 
       printErrorGL(__FILE__, __LINE__);
+
+      glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
       glFlush(); //Executes any lazy command buffers
       glFinish(); //Blocks til they're done
