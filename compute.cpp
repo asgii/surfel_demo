@@ -27,11 +27,13 @@ string getErrorGL()
    }
 }
 
-void printErrorGL()
+//TODO macro wrapper for this function so you don't have to type
+//__FILE__ etc every time?
+void printErrorGL(const char* file, int line)
 {
    string err = getErrorGL();
 
-   if (err.size()) { cerr << "GL error at " << __FILE__ << ", " << __LINE__ << ": " << err << endl; }
+   if (err.size()) { cerr << "GL error at " << file << ", " << line << ": " << err << endl; }
 }
 
 void pcdReader::prep(const string filename)
@@ -558,7 +560,7 @@ bool shader::prep(GLuint program)
 	 cerr << ":" << endl << infoLog << endl;
 	 #endif
 
-	 printErrorGL();
+	 printErrorGL(__FILE__, __LINE__);
       }
 
       else { cerr << endl; }
@@ -619,7 +621,7 @@ bool program::prep()
 
       else { cerr << endl; }
 
-      printErrorGL();
+      printErrorGL(__FILE__, __LINE__);
 
       return false;
    }
@@ -656,9 +658,16 @@ bool framebuffer::prep(image& img)
 			  img.getHandle(),
 			  0);
 
+   glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
    //TODO check
 
    return true;
+}
+
+void framebuffer::use()
+{
+   glBindFramebuffer(GL_FRAMEBUFFER, handle);
 }
 
 void framebuffer::quit()
@@ -671,7 +680,7 @@ void image::prep(GLuint width, GLuint height)
    glGenTextures(1, &handle);
    glBindTexture(GL_TEXTURE_2D, handle);
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
 
    glTexImage2D(GL_TEXTURE_2D,
 		0, //lod
@@ -688,7 +697,7 @@ void image::prep(GLuint width, GLuint height)
    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
 
    //TODO checks
 
@@ -702,7 +711,7 @@ void image::prep(GLuint width, GLuint height)
    
    pushSize();
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
 }
 
 void image::quit()
@@ -762,16 +771,24 @@ void image::pushSize()
 }
 
 void image::clear()
-{   
-   uint32_t val = 0; //Assuming atomicMax not min
-
+{
+   /*
+     NB 2's complement issues in the shader (uvec4(0,0,0) differing
+     from uint(0)) don't apply in the case of samples, since they only
+     need to be cleared for the sake of atomicMax.
+   
+     However, this does mean that 2 different values of clear are
+     needed: one for samples (uint(0)) and one for pixels
+     (uvec4(0,0,0,0)). Hence image::clearValue.
+   */
+   
    glClearTexSubImage(handle,
 		      0, //level
 		      0, 0, 0, //origin x,y,z
 		      x, y, 1, //1: depth
 		      GL_RGBA,
 		      GL_UNSIGNED_INT,
-		      &val);
+		      &clearValue);
 }
 
 void buffer::prep(vector<float> data, GLuint binding)
@@ -865,7 +882,11 @@ void surfelModel::render()
 {
    uint32_t xWkgps, yWkgps;
 
-   getWkgpDimensions(xWkgps, yWkgps, comp1ThreadsPerWkgp, getNumSurfels());
+   //getWkgpDimensions(xWkgps, yWkgps, comp1ThreadsPerWkgp,
+   //getNumSurfels());
+
+   xWkgps = getNumSurfels();
+   yWkgps = 1;
 
    glDispatchCompute(xWkgps,
 		     yWkgps,
@@ -920,35 +941,38 @@ int main(int argc, char** args)
    
    program samplesToPixels = program("compute2.c.glsl");
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
 
    //Programs have to be used while uniforms are loaded
    surfelsToSamples.use();
-   //The arguments are ad hoc bindings, from the shaders
-   image samples = image(3, 4);
+   //The first 2 arguments are ad hoc bindings, from the shaders
+   image samples = image(3, 4, 0);
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
 
+   uint8_t zero = 0;
+   uint32_t clearVec = (zero << 24) | (zero << 16) | (zero << 8) | zero;
+   
    samplesToPixels.use();
-   image pixels = image(5, 6);
+   image pixels = image(5, 6, clearVec);
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
 
    pixels.prep(SCRN_WIDTH, SCRN_HEIGHT);
    samples.prep(SCRN_WIDTH * 2, SCRN_HEIGHT * 2);
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
 
    samples.use(1);
    pixels.use(2);
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
 
    surfelModel surfels;
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
 
-   const GLuint surfelsBinding = 1;
+   const GLuint surfelsBinding = 3;
    string fileName;
    
    if (argc > 1)
@@ -970,18 +994,24 @@ int main(int argc, char** args)
       return 1;
    }
 
-   printErrorGL();
-
-   //TODO: framebuffer stuff? shader needs to write
-   //directly/indirectly
+   printErrorGL(__FILE__, __LINE__);
 
    //TODO: clear stuff first time, without using instance.swapWindow()
+
+   samples.clear();
+   pixels.clear();
+
+   framebuffer frame;
+
+   frame.prep(pixels);
+
+   frame.use();
 
    //Uniform stuff for the first time (e.g. perspective matrix)
    GLint perspectiveLoc = glGetUniformLocation(surfelsToSamples.getHandle(),
 					       "perspective");
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
 
    camera cam = camera(perspectiveLoc,
 		       vec3 {.x = 0.0, .y = 0.0, .z = 0.0},
@@ -991,16 +1021,16 @@ int main(int argc, char** args)
 		       //aspect ratio?
 		       0.5, 40.f);
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
 
    surfelsToSamples.use();
    cam.pushPerspectiveMatrix();
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
    
    int winX, winY;
 
-   printErrorGL();
+   printErrorGL(__FILE__, __LINE__);
 
    while (!instance.checkQuit())
    {
@@ -1028,11 +1058,11 @@ int main(int argc, char** args)
 
       surfelsToSamples.use();
 
-      printErrorGL();
+      printErrorGL(__FILE__, __LINE__);
 
       surfels.render();
 
-      printErrorGL();
+      printErrorGL(__FILE__, __LINE__);
       
       //Primitive inter-pipeline barrier
       glFlush();
@@ -1042,7 +1072,7 @@ int main(int argc, char** args)
 
       samplesToPixels.use();
 
-      printErrorGL();
+      printErrorGL(__FILE__, __LINE__);
 
       //TODO check workgroup maximums
 
@@ -1054,25 +1084,25 @@ int main(int argc, char** args)
 			yWkgps,
 			1);
 
-      printErrorGL();
+      printErrorGL(__FILE__, __LINE__);
 
       glFlush(); //Executes any lazy command buffers
       glFinish(); //Blocks til they're done
 
       instance.swapWindow();
 
-      printErrorGL();
+      printErrorGL(__FILE__, __LINE__);
 
       samples.clear();
       pixels.clear();
 
-      printErrorGL();
+      printErrorGL(__FILE__, __LINE__);
 
       //TODO may have to reattach pixels, since change in fb...?
       
       glClear(GL_COLOR_BUFFER_BIT);
 
-      printErrorGL();
+      printErrorGL(__FILE__, __LINE__);
    }
 
    return 0;

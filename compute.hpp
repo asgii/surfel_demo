@@ -128,16 +128,20 @@ private:
    GLuint x, y;
    GLint xLoc, yLoc;
 
+   //Clear value must be image-specific (in the context of this
+   //program) because it will be interpreted differently by different
+   //accesses (e.g., atomicMax (uint) and displaying a uvec4).
+   uint32_t clearValue;
+
    //Upload x, y as uniforms
    void pushSize();
 
 public:
-   image(GLint widthLocation, GLint heightLocation)
+   image(GLint widthLocation, GLint heightLocation, uint32_t clearVal)
       : handle (0)
-      , x (0)
-      , y (0)
-      , xLoc (widthLocation)
-      , yLoc (heightLocation)
+      , x (0) , y (0)
+      , xLoc (widthLocation) , yLoc (heightLocation)
+      , clearValue (clearVal)
    {}
    ~image() { quit(); }
    
@@ -162,6 +166,8 @@ public:
    
    bool prep(image& img);
    void quit();
+
+   void use();
 };
 
 class buffer
