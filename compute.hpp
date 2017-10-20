@@ -231,6 +231,7 @@ protected:
 			   //from near plane to far plane
 
    float getFarDZ() const;
+   vec3 getDirX() const;
 
 public:
    frustum(vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
@@ -241,7 +242,8 @@ public:
       ,	horFov (nuHorFov), verFov (nuVerFov)
       ,	nearDZ (nuNearDZ), planesDZ (nuPlanesDZ)
    {}
-   
+
+   mat4 getInverseTransformMatrix() const;
    mat4 getPerspectiveMatrix() const;
 
    vec3 getPos() const;
@@ -253,17 +255,17 @@ public:
 class camera : public frustum
 {
 protected:
-   GLint perspectiveLoc;
+   GLint transformLoc;
    
 public:
-   camera(GLint perspLoc, vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
+   camera(GLint transfLoc, vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
 	  float nuHorFov, float nuVerFov,
 	  float nuNearDZ, float nuPlanesDZ)
       : frustum(nuPos, nuDirZ, nuDirY,
 		nuHorFov, nuVerFov,
 		nuNearDZ, nuPlanesDZ)
-      , perspectiveLoc (perspLoc)
+      , transformLoc (transfLoc)
    {}
    
-   void pushPerspectiveMatrix();
+   void pushTransformMatrix();
 };

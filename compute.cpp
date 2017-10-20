@@ -1,6 +1,7 @@
 #include <glad/glad.h>
 #include "compute.hpp"
 #include <iostream>
+#include <map>
 #include <cstring>
 #include <cmath>
 
@@ -27,13 +28,48 @@ string getErrorGL()
    }
 }
 
-//TODO macro wrapper for this function so you don't have to type
-//__FILE__ etc every time?
+//This is so a single error can be inputted for places in a loop.
+//Still won't work with multiple files yet, so I've left in printErrorGL().
+static map<int, string> errorsGL;
+
 void printErrorGL(const char* file, int line)
 {
    string err = getErrorGL();
 
    if (err.size()) { cerr << "GL error at " << file << ", " << line << ": " << err << endl; }
+}
+
+void logErrorGL(int line)
+{
+   string err = getErrorGL();
+
+   if (err.size())
+   {
+      if (!errorsGL.count(line))
+      {
+	 errorsGL[line] = err;
+      }
+   }
+}
+
+#define errorGL() printErrorGL(__FILE__, __LINE__)
+#define LOG_GL() logErrorGL(__LINE__)
+
+void printErrorsGL()
+{
+   for (auto& lineError : errorsGL)
+   {
+      cerr << "GL error at line " << lineError.first;
+      
+      if (lineError.second.size())
+      {
+	 cerr << ": " << lineError.second;
+      }
+
+      cerr << '\n';
+   }
+
+   cerr << flush;
 }
 
 void pcdReader::prep(const string filename)
@@ -571,7 +607,7 @@ bool shader::prep(GLuint program)
 	 cerr << ":" << endl << infoLog << endl;
 	 #endif
 
-	 printErrorGL(__FILE__, __LINE__);
+	 errorGL();
       }
 
       else { cerr << endl; }
@@ -632,7 +668,7 @@ bool program::prep()
 
       else { cerr << endl; }
 
-      printErrorGL(__FILE__, __LINE__);
+      LOG_GL();
 
       return false;
    }
@@ -700,7 +736,7 @@ void image::prep(GLuint width, GLuint height)
    glGenTextures(1, &handle);
    glBindTexture(GL_TEXTURE_2D, handle);
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    glTexImage2D(GL_TEXTURE_2D,
 		0, //lod
@@ -717,7 +753,7 @@ void image::prep(GLuint width, GLuint height)
    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    //TODO checks
 
@@ -731,7 +767,7 @@ void image::prep(GLuint width, GLuint height)
    
    pushSize();
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    //Using nullptr above makes it 'uninitialised'
    clear();
@@ -797,7 +833,7 @@ void image::pushSize()
    glUniform1ui(xLoc, x);
    glUniform1ui(yLoc, y);
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 }
 
 void image::clear()
@@ -982,9 +1018,63 @@ float radians(float deg)
    return deg * 180.f / 3.14159265358979323846;
 }
 
+vec3 cross(vec3 a, vec3 b)
+{
+   return vec3 {.x = a.y * b.z - a.z * b.y,
+	 .y = a.z * b.x - a.x * b.z,
+	 .z = a.x * b.y - a.y * b.x};
+}
+
 float frustum::getFarDZ() const
 {
    return planesDZ - nearDZ;
+}
+
+vec3 frustum::getDirX() const
+{
+   //By right-hand rule
+   return cross(dirZ, dirY);
+}
+
+mat4 frustum::getInverseTransformMatrix() const
+//Get a matrix factoring in the position and rotation of the camera.
+//This must be inverse because you're not actually using it on the
+//camera, but on all other objects; the camera can remain at
+//origin. That way movement of the camera will be registered visibly
+//in the movement of the other objects. (It's done this way because
+//it's simpler to render things with the viewpoint at origin.)
+{
+   vec3 inversePos = vec3 {.x = -pos.x, .y = -pos.y, .z = -pos.z};
+
+   //Don't inverse the directions. But you do need X
+   vec3 dirX = getDirX();
+
+   //I've inlined a matrix mult of the frustum's direction and
+   //position here. They must be multiplied (rather than simply
+   //putting the position in the translation slots of the matrix)
+   //because the rotation is done in camera space, not in world space
+   //(i.e. around the world origin).
+
+   //You can ignore the 4th row/column of these matrices since they're
+   //empty anyway.
+
+   //These are the translation elements of the finished matrix.
+   float nuPosX = dirX.x * inversePos.x +
+      dirY.x * inversePos.y +
+      dirZ.x * inversePos.z;
+
+   float nuPosY = dirX.y * inversePos.x +
+      dirY.y * inversePos.y +
+      dirZ.y * inversePos.z;
+
+   float nuPosZ = dirX.z * inversePos.x +
+      dirY.z * inversePos.y +
+      dirZ.z * inversePos.z;
+
+   return mat4 {.data = {dirX.x, dirX.y, dirX.z, 0.f,
+			 dirY.x, dirY.y, dirY.z, 0.f,
+			 dirZ.x, dirZ.y, dirZ.z, 0.f,
+			 nuPosX, nuPosY, nuPosZ, 1.f}};
 }
 
 mat4 frustum::getPerspectiveMatrix() const
@@ -993,7 +1083,7 @@ mat4 frustum::getPerspectiveMatrix() const
    float posX = tan(radians(horFov / 2.f));
    float posY = tan(radians(verFov) / 2.f);
 
-   //These are just elements of the matrix - which is pretty specific
+   //
    float zRow = 2 * nearDZ / planesDZ + 1;
    float wRow = -2.f * getFarDZ() * nearDZ / planesDZ;
 
@@ -1001,9 +1091,9 @@ mat4 frustum::getPerspectiveMatrix() const
    //in the aspect ratio
 
    mat4 matrix = mat4 {.data = { 1.f / posX, 0.f, 0.f, 0.f,
-			  0.f, 1.f / posY, 0.f, 0.f,
-			  0.f, 0.f, zRow, 1.f,
-			  0.f, 0.f, wRow, 0.f }};
+				 0.f, 1.f / posY, 0.f, 0.f,
+				 0.f, 0.f, zRow, 1.f,
+				 0.f, 0.f, wRow, 0.f }};
    
    return matrix;
 }
@@ -1044,14 +1134,37 @@ vec3 operator* (vec3 a, float scalar)
 	 .z = a.z * scalar};
 }
 
-void camera::pushPerspectiveMatrix()
+mat4 operator* (mat4 a, mat4 b)
 {
-   mat4 persp = getPerspectiveMatrix();
+   return mat4 {.data = {a.data[0] * b.data[0] + a.data[4] * b.data[1] + a.data[8] * b.data[2] + a.data[12] * b.data[3],
+			 a.data[1] * b.data[0] + a.data[5] * b.data[1] + a.data[9] * b.data[2] + a.data[13] * b.data[3],
+			 a.data[2] * b.data[0] + a.data[6] * b.data[1] + a.data[10] * b.data[2] + a.data[14] * b.data[3],
+			 a.data[3] * b.data[0] + a.data[7] * b.data[1] + a.data[11] * b.data[2] + a.data[15] * b.data[3],
 
-   glUniformMatrix4fv(perspectiveLoc,
+			 a.data[0] * b.data[4] + a.data[4] * b.data[5] + a.data[8] * b.data[6] + a.data[12] * b.data[7],
+			 a.data[1] * b.data[4] + a.data[5] * b.data[5] + a.data[9] * b.data[6] + a.data[13] * b.data[7],
+			 a.data[2] * b.data[4] + a.data[6] * b.data[5] + a.data[10] * b.data[6] + a.data[14] * b.data[7],
+			 a.data[3] * b.data[4] + a.data[7] * b.data[5] + a.data[11] * b.data[6] + a.data[15] * b.data[7],
+
+			 a.data[0] * b.data[8] + a.data[4] * b.data[9] + a.data[8] * b.data[10] + a.data[12] * b.data[11],
+			 a.data[1] * b.data[8] + a.data[5] * b.data[9] + a.data[9] * b.data[10] + a.data[13] * b.data[11],
+			 a.data[2] * b.data[8] + a.data[6] * b.data[9] + a.data[10] * b.data[10] + a.data[14] * b.data[11],
+			 a.data[3] * b.data[8] + a.data[7] * b.data[9] + a.data[11] * b.data[10] + a.data[15] * b.data[11],
+
+			 a.data[0] * b.data[12] + a.data[4] * b.data[13] + a.data[8] * b.data[14] + a.data[12] * b.data[15],
+			 a.data[1] * b.data[12] + a.data[5] * b.data[13] + a.data[9] * b.data[14] + a.data[13] * b.data[15],
+			 a.data[2] * b.data[12] + a.data[6] * b.data[13] + a.data[10] * b.data[14] + a.data[14] * b.data[15],
+			 a.data[3] * b.data[12] + a.data[7] * b.data[13] + a.data[11] * b.data[14] + a.data[15] * b.data[15]}};
+}
+
+void camera::pushTransformMatrix()
+{
+   mat4 transf = getPerspectiveMatrix() * getInverseTransformMatrix();
+
+   glUniformMatrix4fv(transformLoc,
 		      1,
 		      false,
-		      (GLfloat*) &persp.data);
+		      (GLfloat*) &transf.data);
 }
 
 int main(int argc, char** args)
@@ -1062,19 +1175,19 @@ int main(int argc, char** args)
    program surfelsToSamples = program("compute.c.glsl");   
    program samplesToPixels = program("compute2.c.glsl");
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    //Programs have to be used while uniforms are loaded
    surfelsToSamples.use();
    //The first 2 arguments are ad hoc bindings, from the shaders - for wid/height
    image samples = image(3, 4);
    
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    samplesToPixels.use();
    image pixels = image(5, 6);
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    surfelsToSamples.use();
    samples.prep(SCRN_WIDTH * 2, SCRN_HEIGHT * 2);
@@ -1082,17 +1195,17 @@ int main(int argc, char** args)
    samplesToPixels.use();
    pixels.prep(SCRN_WIDTH, SCRN_HEIGHT);
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    //Bind images to texture units
    samples.use(1, GL_READ_WRITE);
    pixels.use(2, GL_WRITE_ONLY);
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    surfelModel surfels;
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    const GLuint surfelsBinding = 3;
    string fileName;
@@ -1116,26 +1229,26 @@ int main(int argc, char** args)
       return 1;
    }
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    //Framebuffer stuff
    framebuffer frame;
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
    
    frame.prep(pixels);
    
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    frame.use();
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    //Uniform stuff for the first time (e.g. perspective matrix)
    GLint perspectiveLoc = glGetUniformLocation(surfelsToSamples.getHandle(),
 					       "perspective");
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    camera cam = camera(perspectiveLoc,
 		       vec3 {.x = 33.0, .y = 96.0, .z = 134.0}, //pos
@@ -1145,16 +1258,16 @@ int main(int argc, char** args)
 		       //aspect ratio?
 		       10, 160.f);
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    surfelsToSamples.use();
-   cam.pushPerspectiveMatrix();
+   cam.pushTransformMatrix();
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
    
    int winX, winY;
 
-   printErrorGL(__FILE__, __LINE__);
+   LOG_GL();
 
    while (!instance.getQuit())
    {
@@ -1208,17 +1321,17 @@ int main(int argc, char** args)
 
       surfelsToSamples.use();
 
-      printErrorGL(__FILE__, __LINE__);
+      LOG_GL();
 
       surfels.render();
 
-      printErrorGL(__FILE__, __LINE__);
+      LOG_GL();
 
       glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
       samplesToPixels.use();
 
-      printErrorGL(__FILE__, __LINE__);
+      LOG_GL();
 
       //TODO check workgroup maximums
       uint32_t xWkgps, yWkgps;
@@ -1229,7 +1342,7 @@ int main(int argc, char** args)
 			yWkgps,
 			1);
 
-      printErrorGL(__FILE__, __LINE__);
+      LOG_GL();
 
       glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
@@ -1240,19 +1353,21 @@ int main(int argc, char** args)
 
       instance.swapWindow();
 
-      printErrorGL(__FILE__, __LINE__);
+      LOG_GL();
 
       samples.clear();
       pixels.clear();
 
-      printErrorGL(__FILE__, __LINE__);
+      LOG_GL();
 
       //TODO may have to reattach pixels, since change in fb...?
       
       glClear(GL_COLOR_BUFFER_BIT);
 
-      printErrorGL(__FILE__, __LINE__);
+      LOG_GL();
    }
+
+   printErrorsGL();
 
    return 0;
 }
