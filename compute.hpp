@@ -50,17 +50,31 @@ private:
 
    int windowX, windowY;
 
+   //Last frame and this frame
+   uint32_t then, now;
+
+   //Following stuff is event-handling specific; could be in its own
+   //class
+   bool key_quit;
+   uint32_t key_w, key_s;
+
 public:
    sdlInstance()
       : window (nullptr)
-      , windowX (SCRN_WIDTH)
-      , windowY (SCRN_HEIGHT)
+      , windowX (SCRN_WIDTH), windowY (SCRN_HEIGHT)
+      , then (0), now(0)
+      , key_quit (false)
+      , key_w (0), key_s (0)
    { prep(); }
 
    void swapWindow();
-   bool checkQuit();
    bool getWindowSize(int& x, int& y);
    void getError();
+   void pollEvents();
+
+   bool getQuit() const;
+   uint32_t getW() const;
+   uint32_t getS() const;
    
    void prep();
    void quit();
@@ -114,6 +128,8 @@ public:
    GLuint getHandle();
 };
 
+class framebuffer;
+
 class image
 {
 private:
@@ -145,6 +161,7 @@ public:
    void use(GLuint binding, GLenum access);
    void resize(GLuint width, GLuint height);
    void clear();
+   void blit(framebuffer& fb);
 
    GLuint getHandle() { return handle; }
 };
@@ -162,6 +179,7 @@ public:
    void quit();
 
    void use();
+   void blit(GLint width, GLint height);
 };
 
 class buffer
@@ -225,6 +243,11 @@ public:
    {}
    
    mat4 getPerspectiveMatrix() const;
+
+   vec3 getPos() const;
+   void setPos(vec3 nuPos);
+
+   vec3 getZ() const;
 };
 
 class camera : public frustum

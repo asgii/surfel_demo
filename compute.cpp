@@ -336,7 +336,8 @@ void sdlInstance::prep()
       cerr << "Glad failed to load some OpenGL function." << endl;
    }
 
-   //TODO change
+   then = SDL_GetTicks();
+   
    getError();
 }
 
@@ -353,24 +354,30 @@ void sdlInstance::swapWindow()
    SDL_GL_SwapWindow(window);
 }
 
-bool sdlInstance::checkQuit()
+void sdlInstance::pollEvents()
+//General-purpose event registering
 {
-   //This function won't last very long; it compresses an event loop
-   //into just checking for quits.
+   now = SDL_GetTicks();
 
    while (SDL_PollEvent(&event))
    {
       switch (event.type)
       {
 	 case SDL_QUIT:
-	 { return true; }
+	 { key_quit = true; }
 	 
 	 case SDL_KEYDOWN:
 	 {
 	    switch (event.key.keysym.sym)
 	    {
 	       case SDLK_ESCAPE:
-	       { return true; }
+	       { key_quit = true; }
+
+	       case SDLK_w:
+	       { key_w = now - event.key.timestamp; }
+
+	       case SDLK_s:
+	       { key_s = now - event.key.timestamp; }
 
 	       default:
 	       { break; }
@@ -384,8 +391,12 @@ bool sdlInstance::checkQuit()
       }
    }
 
-   return false;
+   then = now;
 }
+
+bool sdlInstance::getQuit() const { return key_quit; }
+uint32_t sdlInstance::getW() const { return key_w; }
+uint32_t sdlInstance::getS() const { return key_s; }
 
 bool sdlInstance::getWindowSize(int& x, int& y)
 {
@@ -660,14 +671,23 @@ bool framebuffer::prep(image& img)
 
    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-   //TODO check
-
    return true;
 }
 
 void framebuffer::use()
+//ie use to read from for blitting
 {
-   glBindFramebuffer(GL_FRAMEBUFFER, handle);
+   glBindFramebuffer(GL_READ_FRAMEBUFFER, handle);
+}
+
+void framebuffer::blit(GLint width, GLint height)
+{
+   //This depends on glDrawBuffer() and glReadBuffer() but they aren't
+   //variable (even after swapping) so do it once, outside of the function.
+   glBlitFramebuffer(0, 0, width, height, //src
+		     0, 0, width, height, //dst
+		     GL_COLOR_BUFFER_BIT,
+		     GL_LINEAR);
 }
 
 void framebuffer::quit()
@@ -704,7 +724,7 @@ void image::prep(GLuint width, GLuint height)
    //Size uniforms
    x = width;
    y = height;
-
+   
    //Locations: don't bother with glGetUniformLocation, that'd require
    //a string. Just use a layout() qualifier in the shader.
    //(So xLoc and yLoc will be part of the constructor.)
@@ -712,6 +732,9 @@ void image::prep(GLuint width, GLuint height)
    pushSize();
 
    printErrorGL(__FILE__, __LINE__);
+
+   //Using nullptr above makes it 'uninitialised'
+   clear();
 }
 
 void image::quit()
@@ -773,6 +796,8 @@ void image::pushSize()
 
    glUniform1ui(xLoc, x);
    glUniform1ui(yLoc, y);
+
+   printErrorGL(__FILE__, __LINE__);
 }
 
 void image::clear()
@@ -795,6 +820,15 @@ void image::clear()
 		      clearValue);
 }
 
+void image::blit(framebuffer& fb)
+{
+   GLint wid, hei;
+
+   wid = (GLint) x; hei = (GLint) y;
+
+   fb.blit(wid, hei);
+}
+
 void buffer::prep(vector<float> data, GLuint binding)
 {
    nBytes = sizeof(float) * data.size();
@@ -810,7 +844,7 @@ void buffer::prep(vector<float> data, GLuint binding)
    //indeterminately-sized arrays at shader invocation time anyway...
    
    glBufferData(GL_SHADER_STORAGE_BUFFER,
-		data.size(),
+		data.size() * sizeof(float),
 		data.data(),
 		GL_STATIC_DRAW);
 
@@ -956,7 +990,7 @@ float frustum::getFarDZ() const
 mat4 frustum::getPerspectiveMatrix() const
 {
    //
-   float posX = tan(radians(horFov) / 2.f);
+   float posX = tan(radians(horFov / 2.f));
    float posY = tan(radians(verFov) / 2.f);
 
    //These are just elements of the matrix - which is pretty specific
@@ -966,10 +1000,48 @@ mat4 frustum::getPerspectiveMatrix() const
    //TODO here or elsewhere in further matrix to be multiplied: figure
    //in the aspect ratio
 
-   return mat4 {.data = { 1.f / posX, 0.f, 0.f, 0.f,
+   mat4 matrix = mat4 {.data = { 1.f / posX, 0.f, 0.f, 0.f,
 			  0.f, 1.f / posY, 0.f, 0.f,
 			  0.f, 0.f, zRow, 1.f,
 			  0.f, 0.f, wRow, 0.f }};
+   
+   return matrix;
+}
+
+vec3 frustum::getPos() const
+{
+   return pos;
+}
+
+void frustum::setPos(vec3 nuPos)
+{
+   pos = nuPos;
+}
+
+vec3 frustum::getZ() const
+{
+   return dirZ;
+}
+
+vec3 operator+ (vec3 a, vec3 b)
+{
+   return vec3 {.x = a.x + b.x,
+	 .y = a.y + b.y,
+	 .z = a.z + b.z};
+}
+
+vec3 operator- (vec3 a, vec3 b)
+{
+   return vec3 {.x = a.x - b.x,
+	 .y = a.y - b.y,
+	 .z = a.z - b.z};
+}
+
+vec3 operator* (vec3 a, float scalar)
+{
+   return vec3 {.x = a.x * scalar,
+	 .y = a.y * scalar,
+	 .z = a.z * scalar};
 }
 
 void camera::pushPerspectiveMatrix()
@@ -1004,7 +1076,10 @@ int main(int argc, char** args)
 
    printErrorGL(__FILE__, __LINE__);
 
+   surfelsToSamples.use();
    samples.prep(SCRN_WIDTH * 2, SCRN_HEIGHT * 2);
+
+   samplesToPixels.use();
    pixels.prep(SCRN_WIDTH, SCRN_HEIGHT);
 
    printErrorGL(__FILE__, __LINE__);
@@ -1043,17 +1118,13 @@ int main(int argc, char** args)
 
    printErrorGL(__FILE__, __LINE__);
 
-   //TODO: clear stuff first time, without using instance.swapWindow()
-
-   samples.clear();
-   pixels.clear();
-
-   printErrorGL(__FILE__, __LINE__);
-
+   //Framebuffer stuff
    framebuffer frame;
 
+   printErrorGL(__FILE__, __LINE__);
+   
    frame.prep(pixels);
-
+   
    printErrorGL(__FILE__, __LINE__);
 
    frame.use();
@@ -1067,12 +1138,12 @@ int main(int argc, char** args)
    printErrorGL(__FILE__, __LINE__);
 
    camera cam = camera(perspectiveLoc,
-		       vec3 {.x = 0.0, .y = 0.0, .z = 0.0},
-		       vec3 {.x = 0.0, .y = 0.0, .z = 1.0},
-		       vec3 {.x = 0.0, .y = 1.0, .z = 0.0},
+		       vec3 {.x = 33.0, .y = 96.0, .z = 134.0}, //pos
+		       vec3 {.x = 1.0, .y = 0.0, .z = 0.0}, //dirZ
+		       vec3 {.x = 0.0, .y = 1.0, .z = 0.0}, //dirY
 		       65.f, 65.f, //TODO should fov depend on
 		       //aspect ratio?
-		       0.5, 40.f);
+		       10, 160.f);
 
    printErrorGL(__FILE__, __LINE__);
 
@@ -1085,8 +1156,34 @@ int main(int argc, char** args)
 
    printErrorGL(__FILE__, __LINE__);
 
-   while (!instance.checkQuit())
+   while (!instance.getQuit())
    {
+      instance.pollEvents();
+
+      const float speed = 0.000000001;
+      
+      if (instance.getW())
+      {
+	 vec3 pos = cam.getPos();
+
+	 pos = pos + cam.getZ() * (float) instance.getW() * speed;
+
+	 cam.setPos(pos);
+
+//	 cout << pos.x << ", " << pos.y << ", " << pos.z << endl;
+      }
+
+      if (instance.getS())
+      {
+	 vec3 pos = cam.getPos();
+
+	 pos = pos - cam.getZ() * (float) instance.getS() * speed;
+
+	 cam.setPos(pos);
+
+//	 cout << pos.x << ", " << pos.y << ", " << pos.z << endl;
+      }
+
       //If the window's size has changed, size of buffers must change
       //with it.      
       if (instance.getWindowSize(winX, winY))
@@ -1135,6 +1232,8 @@ int main(int argc, char** args)
       printErrorGL(__FILE__, __LINE__);
 
       glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+      pixels.blit(frame);
 
       glFlush(); //Executes any lazy command buffers
       glFinish(); //Blocks til they're done
