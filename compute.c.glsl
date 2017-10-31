@@ -66,7 +66,7 @@ void main()
    //log(point.z + 1); //TODO
 
    //Perspective divide
-   point = point / point.w;
+   vec4 ndc = point / point.w;
 //   point = point / point.z;
 
 //   bool dscrd = ((point.x > 1.0) || (point.x < -1.0) ||
@@ -106,6 +106,9 @@ void main()
 //   dscrd = dscrd || ((point.x < minMaxf.x) || (point.x > minMaxf.x) ||
 //		     (point.y < minMaxf.y) || (point.y > minMaxf.y));
 
+   vec2 wind = vec2(float(samplesXY.x / 2) * ndc.x + float(samplesXY.x / 2),
+		    float(samplesXY.y / 2) * ndc.y + float(samplesXY.y / 2));
+		       
    ivec2 ptxy = ivec2(point.xy);
 
    ivec2 coords = getScreenCoords(ptxy);
@@ -116,11 +119,13 @@ void main()
    
    //Depth followed by rgb
    imageAtomicMax(samples,
-		  coords,
+		  ivec2(wind),
+//		  coords,
 //		  (ptxy + ivec2(samplesXY) / 2),
 //		  dscrd? ivec2(-1, -1) : coords,
 //		  value);
-		  ~uint(0));
+//		  ~uint(0));
+		  uint(0xff00));
 //		  uint(data[1]));
 
 //   imageStore(samples, coords, uvec4(~uint(0)));

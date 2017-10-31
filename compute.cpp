@@ -1367,14 +1367,12 @@ int main(int argc, char** args)
    LOG_GL();
 
    camera cam = camera(perspectiveLoc,
-//		       vec3(24.0, 82.0, 143.0), //pos
 		       vec3(-69.0, 2.456, 91.0),
-//		       vec3(0.0, 0.0, 0.0),
-		       vec3(1.0, 0.0, 0.0), //dirZ
-		       vec3(0.0, 1.0, 0.0), //dirY
+		       vec3(0.0, 0.0, 1.0), //dirZ
+		       vec3(1.0, 0.0, 0.0), //dirY
 		       65.f, //horizontal fov
 		       pixels.getAspectRatio(), //aspect ratio
-		       1.f, 10.f);
+		       1.f, 10.f); //irrelevant until you clip
 
    LOG_GL();
 

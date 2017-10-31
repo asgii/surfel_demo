@@ -60,7 +60,7 @@ uvec4 samp(ivec2 imageCoords)
    //Swizzle because of zrgb in samples
 //   return uvec4(mix.yzw, 1.0); //TODO currently I only really want
 //   depth
-   return uvec4(mix.x, mix.x, mix.x, 1.0);
+   return uvec4(mix.x, mix.y, mix.z, 1.0);
 }
 
 void main()
