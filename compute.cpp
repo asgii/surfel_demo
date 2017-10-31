@@ -3,7 +3,6 @@
 #include <iostream>
 #include <map>
 #include <cstring>
-#include <cmath>
 
 string getErrorGL()
 {
@@ -29,7 +28,9 @@ string getErrorGL()
 }
 
 //This is so a single error can be inputted for places in a loop.
-//Still won't work with multiple files yet, so I've left in printErrorGL().
+//Still won't work with multiple files yet (since a function in
+//another file could be called in 2 places in the same loop and should
+//perhaps be logged twice? TODO) so I've left in printErrorGL().
 static map<int, string> errorsGL;
 
 void printErrorGL(const char* file, int line)
@@ -42,6 +43,8 @@ void printErrorGL(const char* file, int line)
 void logErrorGL(int line)
 {
    string err = getErrorGL();
+
+   //TODO? What if the error is different
 
    if (err.size())
    {
@@ -59,14 +62,8 @@ void printErrorsGL()
 {
    for (auto& lineError : errorsGL)
    {
-      cerr << "GL error at line " << lineError.first;
-      
-      if (lineError.second.size())
-      {
-	 cerr << ": " << lineError.second;
-      }
-
-      cerr << '\n';
+      cerr << "GL error at line " << lineError.first << ": "
+	   << lineError.second << '\n';
    }
 
    cerr << flush;
@@ -407,23 +404,56 @@ void sdlInstance::pollEvents()
 	    switch (event.key.keysym.sym)
 	    {
 	       case SDLK_ESCAPE:
-	       { key_quit = true; }
+	       { key_quit = true; break; }
 
 	       case SDLK_w:
-	       { key_w = now - event.key.timestamp; }
-
+	       { key_w += now - event.key.timestamp; ++num_w; break; }
 	       case SDLK_s:
-	       { key_s = now - event.key.timestamp; }
-
-	       default:
-	       { break; }
+	       { key_s += now - event.key.timestamp; ++num_s; break; }
+	       case SDLK_a:
+	       { key_a += now - event.key.timestamp; ++num_a; break; }
+	       case SDLK_d:
+	       { key_d += now - event.key.timestamp; ++num_d; break; }
 	    }
 
 	    break;
 	 }
 
-	 default:
-	 { break; }
+	 case SDL_KEYUP:
+	 {
+	    uint32_t dt = now - event.key.timestamp;
+	    
+	    switch (event.key.keysym.sym)
+	    {
+	       //Careful of overflow
+	       case SDLK_w:
+	       {
+		  if (dt >= key_w) { key_w = 0; }
+		  else { key_w -= dt; }
+		  break;
+	       }
+	       case SDLK_s:
+	       {
+		  if (dt >= key_s) { key_s = 0; }
+		  else { key_s -= dt; }
+		  break;
+	       }
+	       case SDLK_a:
+	       {
+		  if (dt >= key_a) { key_a = 0; }
+		  else { key_a -= dt; }
+		  break;
+	       }
+	       case SDLK_d:
+	       {
+		  if (dt >= key_d) { key_d = 0; }
+		  else { key_d -= dt; }
+		  break;
+	       }
+	    }
+
+	    break;
+	 }
       }
    }
 
@@ -431,8 +461,47 @@ void sdlInstance::pollEvents()
 }
 
 bool sdlInstance::getQuit() const { return key_quit; }
-uint32_t sdlInstance::getW() const { return key_w; }
-uint32_t sdlInstance::getS() const { return key_s; }
+
+uint32_t sdlInstance::takeW()
+{
+   uint32_t result = key_w;
+
+   key_w = 0;
+
+   return result;
+}
+
+uint32_t sdlInstance::takeS()
+{
+   uint32_t result = key_w;
+
+   key_s = 0;
+
+   return result;
+}
+
+uint32_t sdlInstance::takeA()
+{
+   uint32_t result = key_a;
+
+   key_a = 0;
+
+   return result;
+}
+
+uint32_t sdlInstance::takeD()
+{
+   uint32_t result = key_d;
+
+   key_d = 0;
+
+   return result;
+}
+
+uint32_t sdlInstance::takeNumW() { uint32_t result = num_w; num_w = 0; return result; }
+uint32_t sdlInstance::takeNumS() { uint32_t result = num_s; num_s = 0; return result; }
+uint32_t sdlInstance::takeNumA() { uint32_t result = num_a; num_a = 0; return result; }
+uint32_t sdlInstance::takeNumD() { uint32_t result = num_d; num_d = 0; return result; }
 
 bool sdlInstance::getWindowSize(int& x, int& y)
 {
@@ -758,8 +827,7 @@ void image::prep(GLuint width, GLuint height)
    //TODO checks
 
    //Size uniforms
-   x = width;
-   y = height;
+   xy[0] = width; xy[1] = height;
    
    //Locations: don't bother with glGetUniformLocation, that'd require
    //a string. Just use a layout() qualifier in the shader.
@@ -805,10 +873,9 @@ void image::resize(GLuint width, GLuint height)
      uniforms with the size, instead. Hence pushSize().
    */
 
-   bool needResize = (width > x) || (height > y);
+   bool needResize = (width > xy[0]) || (height > xy[1]);
 
-   x = width;
-   y = height;
+   xy[0] = width; xy[1] = height;
    
    if (needResize)
    {
@@ -830,8 +897,7 @@ void image::pushSize()
 {
    //NB: uniforms have to be done while a shader (the right one) is being used.
 
-   glUniform1ui(xLoc, x);
-   glUniform1ui(yLoc, y);
+   glUniform2uiv(xyLoc, 1, xy);
 
    LOG_GL();
 }
@@ -850,7 +916,7 @@ void image::clear()
    glClearTexSubImage(handle,
 		      0, //level
 		      0, 0, 0, //origin x,y,z
-		      x, y, 1, //1: depth
+		      xy[0], xy[1], 1, //1: depth
 		      GL_RGBA,
 		      GL_UNSIGNED_INT,
 		      clearValue);
@@ -860,9 +926,14 @@ void image::blit(framebuffer& fb)
 {
    GLint wid, hei;
 
-   wid = (GLint) x; hei = (GLint) y;
+   wid = (GLint) xy[0]; hei = (GLint) xy[1];
 
    fb.blit(wid, hei);
+}
+
+float image::getAspectRatio() const
+{
+   return (float) xy[0] / (float) xy[1];
 }
 
 void buffer::prep(vector<float> data, GLuint binding)
@@ -1013,21 +1084,9 @@ void surfelModel::render()
 		     1);
 }
 
-float radians(float deg)
-{
-   return deg * 180.f / 3.14159265358979323846;
-}
-
-vec3 cross(vec3 a, vec3 b)
-{
-   return vec3 {.x = a.y * b.z - a.z * b.y,
-	 .y = a.z * b.x - a.x * b.z,
-	 .z = a.x * b.y - a.y * b.x};
-}
-
 float frustum::getFarDZ() const
 {
-   return planesDZ - nearDZ;
+   return nearDZ + planesDZ;
 }
 
 vec3 frustum::getDirX() const
@@ -1042,9 +1101,11 @@ mat4 frustum::getInverseTransformMatrix() const
 //camera, but on all other objects; the camera can remain at
 //origin. That way movement of the camera will be registered visibly
 //in the movement of the other objects. (It's done this way because
-//it's simpler to render things with the viewpoint at origin.)
+//it's simpler to render things with the viewpoint at origin. For one
+//thing you only need this one transform matrix rather than a
+//camera-relative transform for every object.)
 {
-   vec3 inversePos = vec3 {.x = -pos.x, .y = -pos.y, .z = -pos.z};
+   vec3 inversePos = pos.inverse();
 
    //Don't inverse the directions. But you do need X
    vec3 dirX = getDirX();
@@ -1059,41 +1120,67 @@ mat4 frustum::getInverseTransformMatrix() const
    //empty anyway.
 
    //These are the translation elements of the finished matrix.
-   float nuPosX = dirX.x * inversePos.x +
-      dirY.x * inversePos.y +
-      dirZ.x * inversePos.z;
+   float nuPosX = dirX[0] * inversePos[0] +
+      dirY[0] * inversePos[1] +
+      dirZ[0] * inversePos[2];
 
-   float nuPosY = dirX.y * inversePos.x +
-      dirY.y * inversePos.y +
-      dirZ.y * inversePos.z;
+   float nuPosY = dirX[1] * inversePos[0] +
+      dirY[1] * inversePos[1] +
+      dirZ[1] * inversePos[2];
 
-   float nuPosZ = dirX.z * inversePos.x +
-      dirY.z * inversePos.y +
-      dirZ.z * inversePos.z;
+   float nuPosZ = dirX[2] * inversePos[0] +
+      dirY[2] * inversePos[1] +
+      dirZ[2] * inversePos[2];
 
-   return mat4 {.data = {dirX.x, dirX.y, dirX.z, 0.f,
-			 dirY.x, dirY.y, dirY.z, 0.f,
-			 dirZ.x, dirZ.y, dirZ.z, 0.f,
-			 nuPosX, nuPosY, nuPosZ, 1.f}};
+   return mat4(dirX[0], dirY[0], dirZ[0], 0.f,
+	       dirX[1], dirY[1], dirZ[1], 0.f,
+	       dirX[2], dirY[2], dirZ[2], 0.f,
+	       nuPosX, nuPosY, nuPosZ, 1.f);
+
+   #if 0
+   return mat4(dirX[0], dirX[1], dirX[2], 0.f,
+	       dirY[0], dirY[1], dirY[2], 0.f,
+	       dirZ[0], dirZ[1], dirZ[2], 0.f,
+	       nuPosX, nuPosY, nuPosZ, 1.f);
+
+   return mat4(dirX[0], dirX[1], dirX[2], nuPosX,
+	       dirY[0], dirY[1], dirY[2], nuPosY,
+	       dirZ[0], dirZ[1], dirZ[2], nuPosZ,
+	       0.f, 0.f, 0.f, 1.f);
+
+   return (mat4(dirX[0], dirX[1], dirX[2], 0.f,
+		dirY[0], dirY[1], dirY[2], 0.f,
+		dirZ[0], dirZ[1], dirZ[2], 0.f,
+		0.f, 0.f, 0.f, 1.f)
+	   *
+	   mat4(1.f, 0.f, 0.f, 0.f,
+		0.f, 1.f, 0.f, 0.f,
+		0.f, 0.f, 1.f, 0.f,
+		inversePos[0], inversePos[1], inversePos[2], 1.f));
+   #endif
 }
 
 mat4 frustum::getPerspectiveMatrix() const
 {
-   //
-   float posX = tan(radians(horFov / 2.f));
-   float posY = tan(radians(verFov) / 2.f);
+   //Conversion to radians is in constructor now
+   //Aspect ratio should be implicit
+   float posX = tan(horFov);
+   float posY = tan(verFov);
 
-   //
+   //(planes + planes + near) / (planes + near - near)
+   //= (2 * planes + near) / planes
    float zRow = 2 * nearDZ / planesDZ + 1;
+//   float zRow = (2 * planesDZ + nearDZ) / planesDZ;
+   // = near / planes + 2
    float wRow = -2.f * getFarDZ() * nearDZ / planesDZ;
 
    //TODO here or elsewhere in further matrix to be multiplied: figure
    //in the aspect ratio
 
-   mat4 matrix = mat4 {.data = { 1.f / posX, 0.f, 0.f, 0.f,
-				 0.f, 1.f / posY, 0.f, 0.f,
-				 0.f, 0.f, zRow, 1.f,
-				 0.f, 0.f, wRow, 0.f }};
+   mat4 matrix = mat4(1.f / posX, 0.f, 0.f, 0.f,
+		      0.f, 1.f / posY, 0.f, 0.f,
+		      0.f, 0.f, zRow, 1.f,
+		      0.f, 0.f, wRow, 0.f);
    
    return matrix;
 }
@@ -1113,58 +1200,87 @@ vec3 frustum::getZ() const
    return dirZ;
 }
 
-vec3 operator+ (vec3 a, vec3 b)
-{
-   return vec3 {.x = a.x + b.x,
-	 .y = a.y + b.y,
-	 .z = a.z + b.z};
-}
-
-vec3 operator- (vec3 a, vec3 b)
-{
-   return vec3 {.x = a.x - b.x,
-	 .y = a.y - b.y,
-	 .z = a.z - b.z};
-}
-
-vec3 operator* (vec3 a, float scalar)
-{
-   return vec3 {.x = a.x * scalar,
-	 .y = a.y * scalar,
-	 .z = a.z * scalar};
-}
-
-mat4 operator* (mat4 a, mat4 b)
-{
-   return mat4 {.data = {a.data[0] * b.data[0] + a.data[4] * b.data[1] + a.data[8] * b.data[2] + a.data[12] * b.data[3],
-			 a.data[1] * b.data[0] + a.data[5] * b.data[1] + a.data[9] * b.data[2] + a.data[13] * b.data[3],
-			 a.data[2] * b.data[0] + a.data[6] * b.data[1] + a.data[10] * b.data[2] + a.data[14] * b.data[3],
-			 a.data[3] * b.data[0] + a.data[7] * b.data[1] + a.data[11] * b.data[2] + a.data[15] * b.data[3],
-
-			 a.data[0] * b.data[4] + a.data[4] * b.data[5] + a.data[8] * b.data[6] + a.data[12] * b.data[7],
-			 a.data[1] * b.data[4] + a.data[5] * b.data[5] + a.data[9] * b.data[6] + a.data[13] * b.data[7],
-			 a.data[2] * b.data[4] + a.data[6] * b.data[5] + a.data[10] * b.data[6] + a.data[14] * b.data[7],
-			 a.data[3] * b.data[4] + a.data[7] * b.data[5] + a.data[11] * b.data[6] + a.data[15] * b.data[7],
-
-			 a.data[0] * b.data[8] + a.data[4] * b.data[9] + a.data[8] * b.data[10] + a.data[12] * b.data[11],
-			 a.data[1] * b.data[8] + a.data[5] * b.data[9] + a.data[9] * b.data[10] + a.data[13] * b.data[11],
-			 a.data[2] * b.data[8] + a.data[6] * b.data[9] + a.data[10] * b.data[10] + a.data[14] * b.data[11],
-			 a.data[3] * b.data[8] + a.data[7] * b.data[9] + a.data[11] * b.data[10] + a.data[15] * b.data[11],
-
-			 a.data[0] * b.data[12] + a.data[4] * b.data[13] + a.data[8] * b.data[14] + a.data[12] * b.data[15],
-			 a.data[1] * b.data[12] + a.data[5] * b.data[13] + a.data[9] * b.data[14] + a.data[13] * b.data[15],
-			 a.data[2] * b.data[12] + a.data[6] * b.data[13] + a.data[10] * b.data[14] + a.data[14] * b.data[15],
-			 a.data[3] * b.data[12] + a.data[7] * b.data[13] + a.data[11] * b.data[14] + a.data[15] * b.data[15]}};
-}
-
 void camera::pushTransformMatrix()
 {
    mat4 transf = getPerspectiveMatrix() * getInverseTransformMatrix();
+//   mat4 transf = getPerspectiveMatrix();
+
+   //+++++Test area++++++++
+   if (!tested)
+   {
+      vec4 test = vec4(34.01294, 82.13033, 143.86603, 1.0);
+
+      cout << "test = " << test[0] << ", " << test[1] << ", " << test[2] << endl;
+
+      mat4 persp4 = getPerspectiveMatrix();
+#if 0
+      mat3 persp3 = mat3(persp4[0], persp4[1], persp4[2],
+			 persp4[4], persp4[5], persp4[6],
+			 persp4[8], persp4[9], persp4[10]);
+#endif
+      mat4 full4 = getPerspectiveMatrix() * getInverseTransformMatrix();
+#if 0
+      mat3 full3 = mat3(full4[0], full4[1], full4[2],
+			full4[4], full4[5], full4[6],
+			full4[8], full4[9], full4[10]);
+#endif
+      vec4 testPersp = persp4 * test;
+      vec4 testFull = full4 * test;
+
+      cout << "getPerspectiveMatrix() * getInverseTransformMatrix() = " << '\n' << 
+	 full4[0] << ", " << full4[4] << ", " << full4[8] << ", " << full4[12] << '\n' <<
+	 full4[1] << ", " << full4[5] << ", " << full4[9] << ", " << full4[13] << '\n' <<
+	 full4[2] << ", " << full4[6] << ", " << full4[10] << ", " << full4[14] << '\n' <<
+	 full4[3] << ", " << full4[7] << ", " << full4[11] << ", " << full4[15] << endl;
+
+//      cout << "getPerspectiveMatrix() * test = " << testPersp[0] << ", " << testPersp[1] << ", " << testPersp[2] << endl;
+      cout << "getPerspectiveMatrix() * getInverseTransformMatrix() * test = " << testFull[0] << ", " << testFull[1] << ", " << testFull[2] << endl;
+
+      float ndcX = testFull[0] / testFull[3];
+      float ndcY = testFull[1] / testFull[3];
+      
+      cout << "full ndc = " << ndcX << ", " << ndcY << endl;
+
+      uint32_t halfX = 960 / 2;
+      uint32_t halfY = 540 / 2;
+      
+      float screenX = (float) halfX * (1 + ndcX);
+      float screenY = (float) halfY * (1 + ndcY);
+
+      cout << "full screen xy = " << screenX << ", " << screenY << endl;
+
+//      cout << "pos = " << pos[0] << ", " << pos[1] << ", " << pos[2] << '\n';
+//      cout << "pos.inverse() = " << pos.inverse()[0] << ", " << pos.inverse()[1] << ", " << pos.inverse()[2] << endl;
+
+      tested = true;
+   }
+
+   //++++++++++++++++++++++
 
    glUniformMatrix4fv(transformLoc,
 		      1,
 		      false,
-		      (GLfloat*) &transf.data);
+		      (GLfloat*) &transf);
+}
+
+void camera::rotate(axisAngle aa)
+{
+   if (aa.angle() == 0.f) { return; }
+
+   quaternion qu = quaternion(aa);
+
+   dirY = qu.rotate(dirY);
+   dirZ = qu.rotate(dirZ);
+
+   //+++++++++++
+//   cout << "dirY = " << dirY[0] << ", " << dirY[1] << ", " << dirY[2] << endl;
+//   cout << "dirZ = " << dirZ[0] << ", " << dirZ[1] << ", " << dirZ[2] << endl;
+
+//   cout << "Is dirY unit-length? " << dirY.isUnit(0.01) << endl;
+//   cout << "Is dirZ unit-length? " << dirZ.isUnit(0.01) << endl;
+
+   //Check for orthogonality?
+   //+++++++++++
 }
 
 int main(int argc, char** args)
@@ -1180,12 +1296,12 @@ int main(int argc, char** args)
    //Programs have to be used while uniforms are loaded
    surfelsToSamples.use();
    //The first 2 arguments are ad hoc bindings, from the shaders - for wid/height
-   image samples = image(3, 4);
+   image samples = image(3);
    
    LOG_GL();
 
    samplesToPixels.use();
-   image pixels = image(5, 6);
+   image pixels = image(5);
 
    LOG_GL();
 
@@ -1251,12 +1367,14 @@ int main(int argc, char** args)
    LOG_GL();
 
    camera cam = camera(perspectiveLoc,
-		       vec3 {.x = 33.0, .y = 96.0, .z = 134.0}, //pos
-		       vec3 {.x = 1.0, .y = 0.0, .z = 0.0}, //dirZ
-		       vec3 {.x = 0.0, .y = 1.0, .z = 0.0}, //dirY
-		       65.f, 65.f, //TODO should fov depend on
-		       //aspect ratio?
-		       10, 160.f);
+//		       vec3(24.0, 82.0, 143.0), //pos
+		       vec3(-69.0, 2.456, 91.0),
+//		       vec3(0.0, 0.0, 0.0),
+		       vec3(1.0, 0.0, 0.0), //dirZ
+		       vec3(0.0, 1.0, 0.0), //dirY
+		       65.f, //horizontal fov
+		       pixels.getAspectRatio(), //aspect ratio
+		       1.f, 10.f);
 
    LOG_GL();
 
@@ -1271,30 +1389,68 @@ int main(int argc, char** args)
 
    while (!instance.getQuit())
    {
+      bool cameraMoved = false;
+
       instance.pollEvents();
 
-      const float speed = 0.000000001;
+//      const float speed = 0.00000001;
+      const float speed = 5.f;
+      const float rotSpeed = 0.000000001;
       
-      if (instance.getW())
+      if (uint32_t numW = instance.takeNumW())
       {
 	 vec3 pos = cam.getPos();
 
-	 pos = pos + cam.getZ() * (float) instance.getW() * speed;
+	 pos = pos + cam.getZ() * (float) numW * speed;
 
 	 cam.setPos(pos);
 
-//	 cout << pos.x << ", " << pos.y << ", " << pos.z << endl;
+//	 cout << pos[0] << ", " << pos[1] << ", " << pos[2] << endl;
+
+	 cameraMoved = true;
       }
 
-      if (instance.getS())
+      if (uint32_t numS = instance.takeNumS())
       {
 	 vec3 pos = cam.getPos();
 
-	 pos = pos - cam.getZ() * (float) instance.getS() * speed;
+	 pos = pos - cam.getZ() * (float) numS * speed;
 
 	 cam.setPos(pos);
 
-//	 cout << pos.x << ", " << pos.y << ", " << pos.z << endl;
+//	 cout << pos[0] << ", " << pos[1] << ", " << pos[2] << endl;
+
+	 cameraMoved = true;
+      }
+
+      const float angle = 5.f;
+
+      if (uint32_t numA = instance.takeNumA())
+      {
+//	 cam.rotate(axisAngle(vec3(0.f, 1.f, 0.f), -rotSpeed * (float)
+//	 a));
+	 vec3 axisRot = vec3(0.f, 1.f, 0.f);
+	 
+	 cam.rotate(axisAngle(axisRot, -angle * numA));
+
+//	 cout << "Rotating by " << -rotSpeed * (float) a << " degrees"
+//	 << endl;
+	 cout << "Rotating by " << -angle * numA << endl;
+
+	 cameraMoved = true;
+      }
+
+      if (uint32_t numD = instance.takeNumD())
+      {
+	 //cam.rotate(axisAngle(vec3(0.f, 1.f, 0.f), rotSpeed *
+	 //(float) d));
+	 cam.rotate(axisAngle(vec3(0.f, 1.f, 0.f), angle * numD));
+
+//	 cout << "Rotating by " << rotSpeed * (float) d << " degrees"
+//	 << endl;
+	 cout << "Rotating by " << angle * numD << endl;
+
+	 cameraMoved = true;
       }
 
       //If the window's size has changed, size of buffers must change
@@ -1305,21 +1461,17 @@ int main(int argc, char** args)
 	 samples.resize(winX * 2, winY * 2);
 	 pixels.resize(winX, winY);
 
-	 //TODO might also have to change relationship between pixels
-	 //and framebuffer (though not mentioned by
-	 //glFramebufferTexture afaik)
-	 //Note that if you don't - and shaders use imageSize to
-	 //figure out indexing - then they will be accessing garbage
-
-	 //TODO: perspective matrix will need re-uniforming since it
+	 //Perspective matrix will need re-uniforming since it
 	 //will have aspect ratio baked in
-	 //Since camera movement will re-uniform it anyway later, best
-	 //just to do it there
+	 cameraMoved = true;
+
+	 //TODO: may have to change framebuffer relationship
+	 //too. Currently resizing doesn't update samplesXY correctly
       }
 
-      //TODO: (if camera movement) re-uniform perspective matrix
-
       surfelsToSamples.use();
+
+      if (cameraMoved) { cam.pushTransformMatrix(); }
 
       LOG_GL();
 

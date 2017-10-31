@@ -25,18 +25,19 @@ layout (local_size_x = 1024, local_size_y = 1, local_size_z = 1) in;
   card will stick more than one group in an SIMD anyway? Surely
   occupancy is about getting best fit. But fit in both the SIMD and
   the work...
+
+  (NB the above is somewhat irrelevant given 8192 is well above limits
+  for workgroup sizes)
 */
 
 //Still includes depth at x, so it can be put in that way in
 //previous stage; this stage must sort that out
 layout (rgba8ui, binding = 1) readonly uniform uimage2D samples;
-layout (location = 3) uniform uint samplesX;
-layout (location = 4) uniform uint samplesY;
 
 //The final image
-layout (binding = 2) writeonly uniform uimage2D pixels; //TODO binding
-layout (location = 5) uniform uint pixelsX;
-layout (location = 6) uniform uint pixelsY;
+layout (binding = 2) writeonly uniform uimage2D pixels;
+
+layout (location = 5) uniform uvec2 pixelsXY;
 
 uvec4 samp(ivec2 imageCoords)
 {
@@ -57,7 +58,9 @@ uvec4 samp(ivec2 imageCoords)
    mix += imageLoad(samples, ivec2(baseCoords.x, baseCoords.y + 1)) / 4;
 
    //Swizzle because of zrgb in samples
-   return uvec4(mix.xyz, 1.0);
+//   return uvec4(mix.yzw, 1.0); //TODO currently I only really want
+//   depth
+   return uvec4(mix.x, mix.x, mix.x, 1.0);
 }
 
 void main()
@@ -65,7 +68,7 @@ void main()
    //In this shader each invocation should be assigned a specific
    //pixel (like a fragment shader with a fragment).
    const ivec2 coords = ivec2 (gl_GlobalInvocationID.xy);
-
+   
    imageStore(pixels,
 	      coords,
 	      samp(coords));

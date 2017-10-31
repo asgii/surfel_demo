@@ -6,11 +6,16 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <cmath>
 
-#define SCRN_WIDTH 1920
-#define SCRN_HEIGHT 1080
+#define GEOM_CPP
+#include "../geom/geom.h"
+
+#define SCRN_WIDTH 960
+#define SCRN_HEIGHT 540
 
 using namespace std;
+using namespace geom;
 
 class pcdReader
 {
@@ -56,7 +61,8 @@ private:
    //Following stuff is event-handling specific; could be in its own
    //class
    bool key_quit;
-   uint32_t key_w, key_s;
+   uint32_t key_w, key_s, key_a, key_d;
+   uint32_t num_w, num_s, num_a, num_d;
 
 public:
    sdlInstance()
@@ -64,7 +70,8 @@ public:
       , windowX (SCRN_WIDTH), windowY (SCRN_HEIGHT)
       , then (0), now(0)
       , key_quit (false)
-      , key_w (0), key_s (0)
+      , key_w (0), key_s (0), key_a (0), key_d (0)
+      , num_w (0), num_s (0), num_a (0), num_d (0)
    { prep(); }
 
    void swapWindow();
@@ -73,8 +80,17 @@ public:
    void pollEvents();
 
    bool getQuit() const;
-   uint32_t getW() const;
-   uint32_t getS() const;
+
+   //'take' because they're not const; they subtract values
+   uint32_t takeW();
+   uint32_t takeS();
+   uint32_t takeA();
+   uint32_t takeD();
+
+   uint32_t takeNumW();
+   uint32_t takeNumS();
+   uint32_t takeNumA();
+   uint32_t takeNumD();
    
    void prep();
    void quit();
@@ -141,18 +157,17 @@ private:
      x, y as uniforms to figure out accessing patterns. That way you
      don't have to reallocate when the image shrinks.
    */
-   GLuint x, y;
-   GLint xLoc, yLoc;
+   GLuint xy[2];
+   GLint xyLoc;
 
    //Upload x, y as uniforms
    void pushSize();
 
 public:
-   image(GLint widthLocation, GLint heightLocation)
+   image(GLint sizeLocation)
       : handle (0)
-      , x (0) , y (0)
-      , xLoc (widthLocation) , yLoc (heightLocation)
-   {}
+      , xyLoc (sizeLocation)
+   { xy[0] = 0; xy[1] = 0; }
    ~image() { quit(); }
    
    void prep(GLuint width, GLuint height);
@@ -164,6 +179,7 @@ public:
    void blit(framebuffer& fb);
 
    GLuint getHandle() { return handle; }
+   float getAspectRatio() const;
 };
 
 class framebuffer
@@ -217,10 +233,6 @@ public:
    void render();
 };
 
-//TODO: move these to separate file
-struct vec3 { float x, y, z; };
-struct mat4 { float data[16]; };
-
 class frustum
 {
 protected:
@@ -233,14 +245,19 @@ protected:
    float getFarDZ() const;
    vec3 getDirX() const;
 
+   //TODO: remove this
+   bool tested;
+
 public:
    frustum(vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
-	   float nuHorFov, float nuVerFov,
+	   float nuHorFov, float aspRatio,
 	   float nuNearDZ, float nuPlanesDZ)
       : pos(nuPos)
       , dirZ (nuDirZ), dirY (nuDirY)
-      ,	horFov (nuHorFov), verFov (nuVerFov)
+      ,	horFov (radians(nuHorFov / 2.f))
+      , verFov (atan(tan(horFov) / aspRatio))
       ,	nearDZ (nuNearDZ), planesDZ (nuPlanesDZ)
+      , tested (false) //TODO remove
    {}
 
    mat4 getInverseTransformMatrix() const;
@@ -250,6 +267,7 @@ public:
    void setPos(vec3 nuPos);
 
    vec3 getZ() const;
+   vec3 getY() const { return dirY; } //TODO remove
 };
 
 class camera : public frustum
@@ -259,13 +277,15 @@ protected:
    
 public:
    camera(GLint transfLoc, vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
-	  float nuHorFov, float nuVerFov,
+	  float nuHorFov, float aspRatio,
 	  float nuNearDZ, float nuPlanesDZ)
       : frustum(nuPos, nuDirZ, nuDirY,
-		nuHorFov, nuVerFov,
+		nuHorFov, aspRatio,
 		nuNearDZ, nuPlanesDZ)
       , transformLoc (transfLoc)
    {}
    
    void pushTransformMatrix();
+
+   void rotate(axisAngle aa);
 };
