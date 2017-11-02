@@ -25,49 +25,55 @@ layout (location = 3) uniform uvec2 samplesXY;
 
 layout (location = 5) uniform uvec2 pixelsXY;
 
-ivec2 getScreenCoords(ivec2 ptxy)
+uint get1DGlobalIndex()
 {
-   ivec2 dimensions = ivec2(samplesXY);
+   /*
+     The spec only provides a -local- 1D index
+     (gl_LocalInvocationIndex).
+     This is slight overkill for this shader since the local sizes
+     (above) are only in x.
+   */
 
-   ivec2 coords = (ptxy * dimensions + dimensions) / 2; // / 2;
+   //The start of this workgroup...
+   uint base = (gl_WorkGroupID.z * gl_WorkGroupSize.z * gl_WorkGroupSize.x * gl_WorkGroupSize.y +
+		gl_WorkGroupID.y * gl_WorkGroupSize.y * gl_WorkGroupSize.x +
+		gl_WorkGroupID.x * gl_WorkGroupSize.x);
 
-   if ((coords.x > samplesXY.x) || (coords.x < 0) ||
-       (coords.y > samplesXY.y) || (coords.y < 0))
-   {
-      return ivec2(-1, -1);
-   }
+   //...plus the index into the workgroup.
+   return base + gl_LocalInvocationIndex;
+}
 
-   else return coords;
+ivec2 getWindowCoords(vec2 ndc)
+{
+   /*
+     Note input must be vec2, not ivec2.
+     Since normalised device coords are [-1,1], casting to int before
+     multiplying will make them -1, 0 or 1.
+   */
+
+   vec2 halfDimensions = vec2(samplesXY / 2);
+
+   /*
+     [-1,1] * halfDimensions = [-halfDimensions,halfDimensions]
+     + halfDimensions = [0,samplesXY] (which is appropriate for image ops)
+   */
+   vec2 coords = halfDimensions * (ndc + 1);
+
+   return ivec2(coords);
 }
 
 void main()
 {
-   //The start of this workgroup.
-   uint baseIndex = gl_WorkGroupID.z * gl_WorkGroupSize.z * gl_WorkGroupSize.x * gl_WorkGroupSize.y +
-      gl_WorkGroupID.y * gl_WorkGroupSize.y * gl_WorkGroupSize.x +
-      gl_WorkGroupID.x * gl_WorkGroupSize.x;
-
-   //gl_LocalInvocationIndex is actually like this:
-/*   uint baseIndex = gl_WorkGroupID.z * gl_WorkGroupSize.x * gl_WorkGroupSize.y +
-      gl_WorkGroupID.y * gl_WorkGroupSize.x +
-      gl_WorkGroupID.x;*/
-   
-   uint globalIndex = baseIndex + gl_LocalInvocationIndex;
-   //gl_LocalInvocationIndex isn't right because it's local. There is
-   //no GlobalInvocationIndex.
-
-   //Assuming 1D surfels buffer
-   vec4 data = surfels.data[globalIndex];
+   vec4 data = surfels.data[get1DGlobalIndex()];
 
    //Transform point
-   //Note must be a vec4 ending in 1 for matrix multiplication to work.
+   //Note must be a vec4 ending in 1.0 for matrix multiplication to work.
    vec4 point = perspective * data;
 
    //log(point.z + 1); //TODO
 
-   //Perspective divide
+   //Perspective divide -> normalised device coords
    vec4 ndc = point / point.w;
-//   point = point / point.z;
 
 //   bool dscrd = ((point.x > 1.0) || (point.x < -1.0) ||
 //		 (point.y > 1.0) || (point.y < -1.0) ||
@@ -106,12 +112,7 @@ void main()
 //   dscrd = dscrd || ((point.x < minMaxf.x) || (point.x > minMaxf.x) ||
 //		     (point.y < minMaxf.y) || (point.y > minMaxf.y));
 
-   vec2 wind = vec2(float(samplesXY.x / 2) * ndc.x + float(samplesXY.x / 2),
-		    float(samplesXY.y / 2) * ndc.y + float(samplesXY.y / 2));
-		       
-   ivec2 ptxy = ivec2(point.xy);
-
-   ivec2 coords = getScreenCoords(ptxy);
+   ivec2 coords = getWindowCoords(ndc.xy);
 
 //   ivec2 coords = ivec2(data.xy);
 
@@ -119,14 +120,8 @@ void main()
    
    //Depth followed by rgb
    imageAtomicMax(samples,
-		  ivec2(wind),
-//		  coords,
-//		  (ptxy + ivec2(samplesXY) / 2),
+		  coords,
 //		  dscrd? ivec2(-1, -1) : coords,
 //		  value);
-//		  ~uint(0));
 		  uint(0xff00));
-//		  uint(data[1]));
-
-//   imageStore(samples, coords, uvec4(~uint(0)));
 }
