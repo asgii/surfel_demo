@@ -20,21 +20,22 @@ uniform mat4 perspective;
 
 layout (r32ui, binding = 1) uniform uimage2D samples;
 
-//TODO why not make this a uvec? One less glUniform, too
+//Not imageSize() because of dubious resizing technique - see class image
 layout (location = 3) uniform uvec2 samplesXY;
-
-layout (location = 5) uniform uvec2 pixelsXY;
 
 uint get1DGlobalIndex()
 {
    /*
      The spec only provides a -local- 1D index
-     (gl_LocalInvocationIndex).
+     (gl_LocalInvocationIndex), ie, local to the workgroup. I want to
+     cover all elements of the surfels buffer with this shader - so it
+     must be global.
+
      This is slight overkill for this shader since the local sizes
      (above) are only in x.
    */
 
-   //The start of this workgroup...
+   //The index of the start of this workgroup...
    uint base = (gl_WorkGroupID.z * gl_WorkGroupSize.z * gl_WorkGroupSize.x * gl_WorkGroupSize.y +
 		gl_WorkGroupID.y * gl_WorkGroupSize.y * gl_WorkGroupSize.x +
 		gl_WorkGroupID.x * gl_WorkGroupSize.x);

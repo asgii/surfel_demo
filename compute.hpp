@@ -64,6 +64,10 @@ private:
    uint32_t key_w, key_s, key_a, key_d;
    uint32_t num_w, num_s, num_a, num_d;
 
+   //SDL_GetError is meant only to be valid after a failing SDL
+   //call. So it makes sense that it's private.
+   const char* getError();
+
 public:
    sdlInstance()
       : window (nullptr)
@@ -75,8 +79,7 @@ public:
    { prep(); }
 
    void swapWindow();
-   bool getWindowSize(int& x, int& y);
-   void getError();
+   bool hasWindowChanged(int& x, int& y);
    void pollEvents();
 
    bool getQuit() const;
@@ -245,9 +248,6 @@ protected:
    float getFarDZ() const;
    vec3 getDirX() const;
 
-   //TODO: remove this
-   bool tested;
-
 public:
    frustum(vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
 	   float nuHorFov, float aspRatio,
@@ -257,7 +257,6 @@ public:
       ,	horFov (radians(nuHorFov / 2.f))
       , verFov (atan(tan(horFov) / aspRatio))
       ,	nearDZ (nuNearDZ), planesDZ (nuPlanesDZ)
-      , tested (false) //TODO remove
    {}
 
    mat4 getInverseTransformMatrix() const;
@@ -268,6 +267,8 @@ public:
 
    vec3 getZ() const;
    vec3 getY() const { return dirY; } //TODO remove
+
+   void setAspectRatio(float aspRatio);
 };
 
 class camera : public frustum

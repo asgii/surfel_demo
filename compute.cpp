@@ -22,8 +22,10 @@ string getErrorGL()
 	 return "GL_OUT_OF_MEMORY";
 
       case GL_NO_ERROR:
-      default:
 	 return string();
+	 
+      default:
+	 return to_string(error);
    }
 }
 
@@ -287,24 +289,20 @@ vector<float> pcdReader::read()
    return move(flts);
 }
 
-void sdlInstance::getError()
+const char* sdlInstance::getError()
 {
-   //TODO make this an ostream thing 
-
-   cerr << SDL_GetError(); // << endl;
+   const char* result = SDL_GetError();
 
    SDL_ClearError();
+
+   return result;
 }
 
 void sdlInstance::prep()
 {
    if (SDL_Init(SDL_INIT_VIDEO) != 0)
    {
-      cerr << "SDL failed to initialise: \'";
-
-      getError();
-
-      cerr << "\'" << endl;
+      cerr << "SDL failed to initialise: \'" << getError() << endl;
    }
 
    //4.4 for glClearTex(Sub)Image
@@ -314,8 +312,8 @@ void sdlInstance::prep()
    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
 		       SDL_GL_CONTEXT_PROFILE_CORE);
 
-   uint32_t flags = SDL_WINDOW_OPENGL |
-      SDL_WINDOW_RESIZABLE;
+   uint32_t flags = (SDL_WINDOW_OPENGL |
+		     SDL_WINDOW_RESIZABLE);
 
    window = SDL_CreateWindow("compute test",
 			     
@@ -331,36 +329,28 @@ void sdlInstance::prep()
    {
       //TODO throw?
 
-      cerr << "SDL failed to create window: \'";
-
-      getError();
-
-      cerr << "\'" << endl;
+      cerr << "SDL failed to create window: \'" << getError() << endl;
    }
 
    context = SDL_GL_CreateContext(window);
 
    if (!context)
    {
-      cerr << "SDL failed to create OpenGL context: \'";
-
-      getError();
-
-      cerr << "\'" << endl;
+      cerr << "SDL failed to create OpenGL context: \'" << getError() << endl;
    }
 
    if (SDL_GL_SetSwapInterval(1) == -1)
    {
       //TODO
 
-      getError();
+      cerr << getError() << endl;
    }
 
    //Afaik this gives Glad the function by which it's to retrieve
    //pointers to specific GL functions, and makes it do so for all it
    //needs.
    //TODO figure out how to error check the SDL version, since this
-   //is actually void...!
+   //one is actually void...!
    if (!gladLoadGL())
    //if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress))
    {
@@ -370,8 +360,6 @@ void sdlInstance::prep()
    }
 
    then = SDL_GetTicks();
-   
-   getError();
 }
 
 void sdlInstance::quit()
@@ -503,7 +491,7 @@ uint32_t sdlInstance::takeNumS() { uint32_t result = num_s; num_s = 0; return re
 uint32_t sdlInstance::takeNumA() { uint32_t result = num_a; num_a = 0; return result; }
 uint32_t sdlInstance::takeNumD() { uint32_t result = num_d; num_d = 0; return result; }
 
-bool sdlInstance::getWindowSize(int& x, int& y)
+bool sdlInstance::hasWindowChanged(int& x, int& y)
 {
    int oldX = windowX;
    int oldY = windowY;
@@ -788,7 +776,7 @@ void framebuffer::use()
 void framebuffer::blit(GLint width, GLint height)
 {
    //This depends on glDrawBuffer() and glReadBuffer() but they aren't
-   //variable (even after swapping) so do it once, outside of the function.
+   //variable (even after swapping buffers) so do it once, outside of the function.
    glBlitFramebuffer(0, 0, width, height, //src
 		     0, 0, width, height, //dst
 		     GL_COLOR_BUFFER_BIT,
@@ -873,12 +861,15 @@ void image::resize(GLuint width, GLuint height)
      uniforms with the size, instead. Hence pushSize().
    */
 
-   bool needResize = (width > xy[0]) || (height > xy[1]);
+   bool needRealloc = (width > xy[0]) || (height > xy[1]);
 
    xy[0] = width; xy[1] = height;
    
-   if (needResize)
+   if (needRealloc)
    {
+      //Must bind for glTexImage2D!
+      glBindTexture(GL_TEXTURE_2D, handle);
+
       glTexImage2D(GL_TEXTURE_2D,
 		   0, //lod
 		   GL_RGBA,
@@ -888,9 +879,12 @@ void image::resize(GLuint width, GLuint height)
 		   GL_RGBA,
 		   GL_UNSIGNED_BYTE,
 		   nullptr);
+
+      //Clear the newly allocated parts
+      clear();
    }
 
-   else { pushSize(); }
+   pushSize();
 }
 
 void image::pushSize()
@@ -904,12 +898,8 @@ void image::pushSize()
 
 void image::clear()
 {
-   /*
-     It's fine to use 0 whether you use the texture as vec4(0, 0, 0,
-     0) or uint(0), because it's unsigned.
-
-     Unusually (?) RGBA reads 4 uints here. Just GL_RED puts alpha to 1.0!
-   */
+   //Unusually (?) RGBA reads 4 uints here.
+   //Best not use GL_RED; it puts alpha to 1.0.
    
    static const uint32_t clearValue[4] = {0, 0, 0, 0};
    
@@ -944,8 +934,6 @@ void buffer::prep(vector<float> data, GLuint binding)
 
    glBindBuffer(GL_SHADER_STORAGE_BUFFER, handle);
 
-   //If you had version 4.4, BufferStorage would be better (TODO?)
-
    //Round up size in bytes for packing (for benefit of shader
    //accesses)? But then - SSBOs work out the size of
    //indeterminately-sized arrays at shader invocation time anyway...
@@ -968,7 +956,7 @@ void buffer::quit()
 void buffer::clear()
 {
    //Value given depends on current pipeline (of depth being in x etc,
-   //and on the format of the buffer being a bunch of (32bit) vec4s)
+   //and on the format of the buffer being a bunch of (32b) uvec4s)
 
    //0 will mean both the furthest depth possible, and a colour value
    //of (0, 0, 0) i.e. black
@@ -1096,68 +1084,66 @@ vec3 frustum::getDirX() const
 }
 
 mat4 frustum::getInverseTransformMatrix() const
-//Get a matrix factoring in the position and rotation of the camera.
-//This must be inverse because you're not actually using it on the
-//camera, but on all other objects; the camera can remain at
-//origin. That way movement of the camera will be registered visibly
-//in the movement of the other objects. (It's done this way because
-//it's simpler to render things with the viewpoint at origin. For one
-//thing you only need this one transform matrix rather than a
-//camera-relative transform for every object.)
+/*
+  Get a matrix factoring in the position and rotation of the camera.
+  This must be inverse because you're not actually using it on the
+  camera, but on all other objects; the camera can remain at
+  origin. That way movement of the camera will be registered visibly
+  in the movement of the other objects. (It's done this way because
+  it's simpler to render things with the viewpoint at origin. For one
+  thing you only need this one transform matrix rather than a
+  camera-relative transform for every object.)
+*/
 {
    vec3 inversePos = pos.inverse();
 
    //Don't inverse the directions. But you do need X
+   //(You would inverse direction if the camera stored a transitive
+   //transform (eg a quat) of an original camera direction; as is, I store the
+   //actual current direction in world coords.)
    vec3 dirX = getDirX();
 
-   //I've inlined a matrix mult of the frustum's direction and
-   //position here. They must be multiplied (rather than simply
-   //putting the position in the translation slots of the matrix)
-   //because the rotation is done in camera space, not in world space
-   //(i.e. around the world origin).
+   /*
+     I've inlined a matrix mult of the frustum's direction and
+     position here. They must be multiplied (rather than simply
+     putting the position in the translation slots of the matrix)
+     because the rotation is done in camera space, not in world space
+     (i.e. around the world origin).
 
-   //You can ignore the 4th row/column of these matrices since they're
-   //empty anyway.
-
-   //These are the translation elements of the finished matrix.
-   float nuPosX = dirX[0] * inversePos[0] +
-      dirY[0] * inversePos[1] +
-      dirZ[0] * inversePos[2];
-
-   float nuPosY = dirX[1] * inversePos[0] +
-      dirY[1] * inversePos[1] +
-      dirZ[1] * inversePos[2];
-
-   float nuPosZ = dirX[2] * inversePos[0] +
-      dirY[2] * inversePos[1] +
-      dirZ[2] * inversePos[2];
-
-   return mat4(dirX[0], dirY[0], dirZ[0], 0.f,
-	       dirX[1], dirY[1], dirZ[1], 0.f,
-	       dirX[2], dirY[2], dirZ[2], 0.f,
-	       nuPosX, nuPosY, nuPosZ, 1.f);
-
-   #if 0
-   return mat4(dirX[0], dirX[1], dirX[2], 0.f,
-	       dirY[0], dirY[1], dirY[2], 0.f,
-	       dirZ[0], dirZ[1], dirZ[2], 0.f,
-	       nuPosX, nuPosY, nuPosZ, 1.f);
-
-   return mat4(dirX[0], dirX[1], dirX[2], nuPosX,
-	       dirY[0], dirY[1], dirY[2], nuPosY,
-	       dirZ[0], dirZ[1], dirZ[2], nuPosZ,
-	       0.f, 0.f, 0.f, 1.f);
-
-   return (mat4(dirX[0], dirX[1], dirX[2], 0.f,
-		dirY[0], dirY[1], dirY[2], 0.f,
-		dirZ[0], dirZ[1], dirZ[2], 0.f,
-		0.f, 0.f, 0.f, 1.f)
+     It's equivalent to this:
+   */
+#if 0
+      return (mat4(dirX[0], dirX[1], dirX[2], 0.f,
+		   dirY[0], dirY[1], dirY[2], 0.f,
+		   dirZ[0], dirZ[1], dirZ[2], 0.f,
+		   0.f, 0.f, 0.f, 1.f)
 	   *
 	   mat4(1.f, 0.f, 0.f, 0.f,
 		0.f, 1.f, 0.f, 0.f,
 		0.f, 0.f, 1.f, 0.f,
 		inversePos[0], inversePos[1], inversePos[2], 1.f));
-   #endif
+#endif
+
+   //You can ignore the 4th row/column of these matrices since they're
+   //empty anyway.
+
+   //These are the translation elements of the finished matrix.
+   float nuPosX = (dirX[0] * inversePos[0] +
+		   dirY[0] * inversePos[1] +
+		   dirZ[0] * inversePos[2]);
+
+   float nuPosY = (dirX[1] * inversePos[0] +
+		   dirY[1] * inversePos[1] +
+		   dirZ[1] * inversePos[2]);
+
+   float nuPosZ = (dirX[2] * inversePos[0] +
+		   dirY[2] * inversePos[1] +
+		   dirZ[2] * inversePos[2]);
+
+   return mat4(dirX[0], dirY[0], dirZ[0], 0.f,
+	       dirX[1], dirY[1], dirZ[1], 0.f,
+	       dirX[2], dirY[2], dirZ[2], 0.f,
+	       nuPosX, nuPosY, nuPosZ, 1.f);
 }
 
 mat4 frustum::getPerspectiveMatrix() const
@@ -1167,20 +1153,13 @@ mat4 frustum::getPerspectiveMatrix() const
    float posX = tan(horFov);
    float posY = tan(verFov);
 
-   //(planes + planes + near) / (planes + near - near)
-   //= (2 * planes + near) / planes
-   float zRow = 2 * nearDZ / planesDZ + 1;
-//   float zRow = (2 * planesDZ + nearDZ) / planesDZ;
-   // = near / planes + 2
-   float wRow = -2.f * getFarDZ() * nearDZ / planesDZ;
-
-   //TODO here or elsewhere in further matrix to be multiplied: figure
-   //in the aspect ratio
+   float zCol = 2 * nearDZ / planesDZ + 1;
+   float wCol = -2.f * getFarDZ() * nearDZ / planesDZ;
 
    mat4 matrix = mat4(1.f / posX, 0.f, 0.f, 0.f,
 		      0.f, 1.f / posY, 0.f, 0.f,
-		      0.f, 0.f, zRow, 1.f,
-		      0.f, 0.f, wRow, 0.f);
+		      0.f, 0.f, zCol, 1.f,
+		      0.f, 0.f, wCol, 0.f);
    
    return matrix;
 }
@@ -1200,62 +1179,15 @@ vec3 frustum::getZ() const
    return dirZ;
 }
 
+void frustum::setAspectRatio(float aspRatio)
+{
+   //Compute new verFov.
+   verFov = atan(tan(horFov) / aspRatio);
+}
+
 void camera::pushTransformMatrix()
 {
    mat4 transf = getPerspectiveMatrix() * getInverseTransformMatrix();
-//   mat4 transf = getPerspectiveMatrix();
-
-   //+++++Test area++++++++
-   if (!tested)
-   {
-      vec4 test = vec4(34.01294, 82.13033, 143.86603, 1.0);
-
-      cout << "test = " << test[0] << ", " << test[1] << ", " << test[2] << endl;
-
-      mat4 persp4 = getPerspectiveMatrix();
-#if 0
-      mat3 persp3 = mat3(persp4[0], persp4[1], persp4[2],
-			 persp4[4], persp4[5], persp4[6],
-			 persp4[8], persp4[9], persp4[10]);
-#endif
-      mat4 full4 = getPerspectiveMatrix() * getInverseTransformMatrix();
-#if 0
-      mat3 full3 = mat3(full4[0], full4[1], full4[2],
-			full4[4], full4[5], full4[6],
-			full4[8], full4[9], full4[10]);
-#endif
-      vec4 testPersp = persp4 * test;
-      vec4 testFull = full4 * test;
-
-      cout << "getPerspectiveMatrix() * getInverseTransformMatrix() = " << '\n' << 
-	 full4[0] << ", " << full4[4] << ", " << full4[8] << ", " << full4[12] << '\n' <<
-	 full4[1] << ", " << full4[5] << ", " << full4[9] << ", " << full4[13] << '\n' <<
-	 full4[2] << ", " << full4[6] << ", " << full4[10] << ", " << full4[14] << '\n' <<
-	 full4[3] << ", " << full4[7] << ", " << full4[11] << ", " << full4[15] << endl;
-
-//      cout << "getPerspectiveMatrix() * test = " << testPersp[0] << ", " << testPersp[1] << ", " << testPersp[2] << endl;
-      cout << "getPerspectiveMatrix() * getInverseTransformMatrix() * test = " << testFull[0] << ", " << testFull[1] << ", " << testFull[2] << endl;
-
-      float ndcX = testFull[0] / testFull[3];
-      float ndcY = testFull[1] / testFull[3];
-      
-      cout << "full ndc = " << ndcX << ", " << ndcY << endl;
-
-      uint32_t halfX = 960 / 2;
-      uint32_t halfY = 540 / 2;
-      
-      float screenX = (float) halfX * (1 + ndcX);
-      float screenY = (float) halfY * (1 + ndcY);
-
-      cout << "full screen xy = " << screenX << ", " << screenY << endl;
-
-//      cout << "pos = " << pos[0] << ", " << pos[1] << ", " << pos[2] << '\n';
-//      cout << "pos.inverse() = " << pos.inverse()[0] << ", " << pos.inverse()[1] << ", " << pos.inverse()[2] << endl;
-
-      tested = true;
-   }
-
-   //++++++++++++++++++++++
 
    glUniformMatrix4fv(transformLoc,
 		      1,
@@ -1271,16 +1203,6 @@ void camera::rotate(axisAngle aa)
 
    dirY = qu.rotate(dirY);
    dirZ = qu.rotate(dirZ);
-
-   //+++++++++++
-//   cout << "dirY = " << dirY[0] << ", " << dirY[1] << ", " << dirY[2] << endl;
-//   cout << "dirZ = " << dirZ[0] << ", " << dirZ[1] << ", " << dirZ[2] << endl;
-
-//   cout << "Is dirY unit-length? " << dirY.isUnit(0.01) << endl;
-//   cout << "Is dirZ unit-length? " << dirZ.isUnit(0.01) << endl;
-
-   //Check for orthogonality?
-   //+++++++++++
 }
 
 int main(int argc, char** args)
@@ -1319,9 +1241,7 @@ int main(int argc, char** args)
 
    LOG_GL();
 
-   surfelModel surfels;
-
-   LOG_GL();
+   surfelModel surfels; LOG_GL();
 
    const GLuint surfelsBinding = 3;
    string fileName;
@@ -1348,17 +1268,11 @@ int main(int argc, char** args)
    LOG_GL();
 
    //Framebuffer stuff
-   framebuffer frame;
-
-   LOG_GL();
+   framebuffer frame; LOG_GL();
    
-   frame.prep(pixels);
-   
-   LOG_GL();
+   frame.prep(pixels); LOG_GL();
 
-   frame.use();
-
-   LOG_GL();
+   frame.use(); LOG_GL();
 
    //Uniform stuff for the first time (e.g. perspective matrix)
    GLint perspectiveLoc = glGetUniformLocation(surfelsToSamples.getHandle(),
@@ -1367,10 +1281,10 @@ int main(int argc, char** args)
    LOG_GL();
 
    camera cam = camera(perspectiveLoc,
-		       vec3(-69.0, 2.456, 91.0),
+		       vec3(0.0, 0.0, -500.0), //pos
 		       vec3(0.0, 0.0, 1.0), //dirZ
-		       vec3(1.0, 0.0, 0.0), //dirY
-		       65.f, //horizontal fov
+		       vec3(0.0, 1.0, 0.0), //dirY
+		       35.f, //horizontal fov
 		       pixels.getAspectRatio(), //aspect ratio
 		       1.f, 10.f); //irrelevant until you clip
 
@@ -1391,9 +1305,8 @@ int main(int argc, char** args)
 
       instance.pollEvents();
 
-//      const float speed = 0.00000001;
       const float speed = 5.f;
-      const float rotSpeed = 0.000000001;
+      const float angle = 0.0005;
       
       if (uint32_t numW = instance.takeNumW())
       {
@@ -1402,8 +1315,6 @@ int main(int argc, char** args)
 	 pos = pos + cam.getZ() * (float) numW * speed;
 
 	 cam.setPos(pos);
-
-//	 cout << pos[0] << ", " << pos[1] << ", " << pos[2] << endl;
 
 	 cameraMoved = true;
       }
@@ -1416,72 +1327,56 @@ int main(int argc, char** args)
 
 	 cam.setPos(pos);
 
-//	 cout << pos[0] << ", " << pos[1] << ", " << pos[2] << endl;
-
 	 cameraMoved = true;
       }
 
-      const float angle = 5.f;
-
       if (uint32_t numA = instance.takeNumA())
       {
-//	 cam.rotate(axisAngle(vec3(0.f, 1.f, 0.f), -rotSpeed * (float)
-//	 a));
-	 vec3 axisRot = vec3(0.f, 1.f, 0.f);
-	 
-	 cam.rotate(axisAngle(axisRot, -angle * numA));
+//	 vec3 axisRot = vec3(0.f, 1.f, 0.f);
+	 vec3 axisRot = cam.getY();
 
-//	 cout << "Rotating by " << -rotSpeed * (float) a << " degrees"
-//	 << endl;
-	 cout << "Rotating by " << -angle * numA << endl;
+	 float finalDegrees = -angle * numA;
+	 
+	 cam.rotate(axisAngle(axisRot, finalDegrees));
 
 	 cameraMoved = true;
       }
 
       if (uint32_t numD = instance.takeNumD())
       {
-	 //cam.rotate(axisAngle(vec3(0.f, 1.f, 0.f), rotSpeed *
-	 //(float) d));
 	 cam.rotate(axisAngle(vec3(0.f, 1.f, 0.f), angle * numD));
-
-//	 cout << "Rotating by " << rotSpeed * (float) d << " degrees"
-//	 << endl;
-	 cout << "Rotating by " << angle * numD << endl;
 
 	 cameraMoved = true;
       }
 
       //If the window's size has changed, size of buffers must change
       //with it.      
-      if (instance.getWindowSize(winX, winY))
+      if (instance.hasWindowChanged(winX, winY))
       {
 	 //These also do associated uniforms
 	 samples.resize(winX * 2, winY * 2);
 	 pixels.resize(winX, winY);
 
+	 //Don't update aspect ratio based on new sizes though - it's weird.
+
 	 //Perspective matrix will need re-uniforming since it
 	 //will have aspect ratio baked in
 	 cameraMoved = true;
 
-	 //TODO: may have to change framebuffer relationship
-	 //too. Currently resizing doesn't update samplesXY correctly
+	 //Framebuffer seems not to need re-connecting to texture, either.
       }
 
-      surfelsToSamples.use();
+      surfelsToSamples.use(); LOG_GL();
 
       if (cameraMoved) { cam.pushTransformMatrix(); }
 
       LOG_GL();
 
-      surfels.render();
-
-      LOG_GL();
+      surfels.render(); LOG_GL();
 
       glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
-      samplesToPixels.use();
-
-      LOG_GL();
+      samplesToPixels.use(); LOG_GL();
 
       //TODO check workgroup maximums
       uint32_t xWkgps, yWkgps;
@@ -1501,9 +1396,7 @@ int main(int argc, char** args)
       glFlush(); //Executes any lazy command buffers
       glFinish(); //Blocks til they're done
 
-      instance.swapWindow();
-
-      LOG_GL();
+      instance.swapWindow(); LOG_GL();
 
       samples.clear();
       pixels.clear();
@@ -1512,9 +1405,7 @@ int main(int argc, char** args)
 
       //TODO may have to reattach pixels, since change in fb...?
       
-      glClear(GL_COLOR_BUFFER_BIT);
-
-      LOG_GL();
+      glClear(GL_COLOR_BUFFER_BIT); LOG_GL();
    }
 
    printErrorsGL();
