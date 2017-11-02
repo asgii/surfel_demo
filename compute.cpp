@@ -994,11 +994,6 @@ size_t surfelModel::getNumSurfels() const
    return (data.size() / sizeof(float)) / 4;
 }
 
-static const uint32_t comp1LocalX = 64;
-static const uint32_t comp1LocalY = 1;
-static const uint32_t comp2LocalX = 1024;
-static const uint32_t comp2LocalY = 1;
-
 bool getWkgpDimensions(uint32_t& xWkgps, uint32_t& yWkgps,
 		       uint32_t localX, uint32_t localY,
 		       uint32_t reqGlobalX, uint32_t reqGlobalY)
@@ -1061,11 +1056,13 @@ bool getWkgpDimensions(uint32_t& xWkgps, uint32_t& yWkgps,
    else { return true; }
 }
 
-void surfelModel::render()
+void surfelModel::render(int localX, int localY)
 {
    uint32_t xWkgps, yWkgps;
       
-   getWkgpDimensions(xWkgps, yWkgps, comp1LocalX, comp1LocalY, getNumSurfels(), 1);
+   getWkgpDimensions(xWkgps, yWkgps,
+		     (uint32_t) localX, (uint32_t) localY,
+		     getNumSurfels(), 1);
 
    glDispatchCompute(xWkgps,
 		     yWkgps,
@@ -1214,6 +1211,12 @@ int main(int argc, char** args)
    program samplesToPixels = program("compute2.c.glsl");
 
    LOG_GL();
+
+   //Get the local sizes from those shaders.
+   int surfelsToSamplesSizes[3];
+   int samplesToPixelsSizes[3];
+   glGetProgramiv(surfelsToSamples.getHandle(), GL_COMPUTE_WORK_GROUP_SIZE, surfelsToSamplesSizes);
+   glGetProgramiv(samplesToPixels.getHandle(), GL_COMPUTE_WORK_GROUP_SIZE, samplesToPixelsSizes);
 
    //Programs have to be used while uniforms are loaded
    surfelsToSamples.use();
@@ -1372,7 +1375,7 @@ int main(int argc, char** args)
 
       LOG_GL();
 
-      surfels.render(); LOG_GL();
+      surfels.render(surfelsToSamplesSizes[0], surfelsToSamplesSizes[1]); LOG_GL();
 
       glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
@@ -1381,7 +1384,9 @@ int main(int argc, char** args)
       //TODO check workgroup maximums
       uint32_t xWkgps, yWkgps;
       
-      getWkgpDimensions(xWkgps, yWkgps, comp2LocalX, comp2LocalY, winX, winY);
+      getWkgpDimensions(xWkgps, yWkgps,
+			samplesToPixelsSizes[0], samplesToPixelsSizes[1],
+			winX, winY);
 
       glDispatchCompute(xWkgps,
 			yWkgps,

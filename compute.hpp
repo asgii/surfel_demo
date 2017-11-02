@@ -233,7 +233,7 @@ private:
 public:
    void prep(const string fileName, GLuint binding);
    
-   void render();
+   void render(int localX, int localY);
 };
 
 class frustum
