@@ -1,5 +1,10 @@
 #include <glad/glad.h>
+
 #include "compute.hpp"
+#include "projection.hpp"
+#include "pcdReader.hpp"
+#include "sdl_utils.hpp"
+
 #include <iostream>
 #include <map>
 #include <cstring>
@@ -69,443 +74,6 @@ void printErrorsGL()
    }
 
    cerr << flush;
-}
-
-void pcdReader::prep(const string filename)
-{
-   if ((filename.size() < 5) ||
-       //-1 to get to last, -3 to get to '.'
-       (filename.substr(filename.size() - 4) != ".pcd"))
-   { throw invalid_argument("File name given, \"" + filename + "\", was not a .pcd"); }
-
-   file.open(filename, ifstream::in);
-
-   if (file.fail())
-   {
-      file.close();
-      
-      throw invalid_argument("No such .pcd file \"" + filename + "\", or problem reading file");
-   }
-
-   getLine();
-   getWord();
-}
-
-void pcdReader::getPlace(streampos& fileSave,
-			 string& lineSave,
-			 string& wordSave)
-{
-   lineSave = line.str();
-   wordSave = word;
-
-   fileSave = file.tellg();
-}
-
-void pcdReader::setPlace(streampos fileSave,
-			 string lineSave,
-			 string wordSave)
-{
-   file.seekg(fileSave);
-
-   line.str(lineSave);
-
-   word = wordSave;
-}
-
-string pcdReader::getLine()
-{
-   //Important: clear old one! .str() does not
-   line = istringstream();
-
-   string str;
-
-   //NB >> from stream to stream does the whole stream.
-   getline(file, str);
-
-   line.str(str);
-
-   return line.str();
-}
-
-const string& pcdReader::getWordOnLine()
-//Get a word from the current line only
-{
-   line >> word;
-
-   return word;
-}
-
-const string& pcdReader::getWord()
-{
-   if (line.eof())
-   {
-      getLine();
-   }
-
-   line >> word;
-
-   return word;
-}
-
-bool pcdReader::seekWord(string str)
-//Seek word -after- str, in the stream.
-{
-   //Clearly, this won't work if str includes ' ' or '\n', because
-   //they're the delimiters of getWord and getLine
-   if ((str.find(' ') != string::npos) ||
-       (str.find('\n') != string::npos))
-   {
-      throw invalid_argument("Can't seek multiple, delimited words");
-   }
-
-   streampos fileBackup;
-   string lineBackup;
-   string wordBackup;
-   
-   getPlace(fileBackup, lineBackup, wordBackup);
-   
-   while (word != str)
-   {
-      //End of stream
-      if (file.eof() && line.eof())
-      {
-	 //Restore old place in the file
-	 setPlace(fileBackup, lineBackup, wordBackup);
-
-	 return false;
-      }
-
-      getWord();
-   }
-
-   //Eat the word you've found. NB not necessarily same line
-   getWord();
-   
-   return true;
-}
-
-size_t pcdReader::readHeader()
-{
-   //Optional TODO actually check types, etc.
-   //Not particularly useful at the moment.
-
-   if (!seekWord("POINTS")) { throw invalid_argument("Invalid .pcd file: no 'POINTS' section"); }
-
-   if (!word.size()) { throw invalid_argument("No surfels in .pcd file"); }
-
-   size_t numSurfels = stoi(word);
-
-   //TODO support 'DATA binary' files, too?
-
-   seekWord("DATA");
-
-   //Eat 'ascii', move onto next line
-   getWord();
-   
-   return numSurfels;
-}
-
-vector<float> pcdReader::readBody(size_t numSurfels)
-{
-   vector<float> result;
-
-   result.reserve(numSurfels * 4);
-
-   const int numFields = 3; //xyz
-
-   for (int i = 0; i < (int) numSurfels; ++i)
-   {
-      int j = 0;
-
-      try //because stof() can throw
-      {
-	 for (; j < numFields; ++j)
-	 {
-	    getWordOnLine();
-
-	    float wordBinary = stof(word);
-	    
-	    result.push_back(wordBinary);
-	 }
-      }
-
-      //catch (const invalid_argument& inv)
-      //catch (const out_of_range& ran)
-      catch (const exception&)
-      {
-	 cerr << "Surfel row " << i << ", component " << j << " couldn't be read. Ignoring this surfel." << endl;
-
-	 //Write over this surfel by popping from result
-	 //NB since catch gotos, this current 'j' won't have
-	 //pushed yet. So if j is 0, none to pop
-	 for (int k = 0; k < j; ++k)
-	 {
-	    result.pop_back();
-	 }
-
-	 //Escape from below push_back
-	 getLine();
-	 continue;
-      }
-
-      //w
-      result.push_back(1.0);
-
-      getLine();
-   }
-
-   return move(result);
-}
-
-vector<float> pcdReader::read()
-{
-   vector<float> flts;
-   
-   size_t numSurfels = 0;
-   
-   try
-   {
-      numSurfels = readHeader();
-   }
-
-   catch (const exception& e)
-   {
-      cerr << e.what() << endl;
-   }
-
-   if (!numSurfels) { throw invalid_argument("Failure reading file header"); }
-   
-   flts = readBody(numSurfels);
-
-   if (file.fail())
-   {
-      file.close();
-      
-      throw runtime_error("Failed to read all of the file");
-   }
-
-   file.close();
-
-   return move(flts);
-}
-
-const char* sdlInstance::getError()
-{
-   const char* result = SDL_GetError();
-
-   SDL_ClearError();
-
-   return result;
-}
-
-void sdlInstance::prep()
-{
-   if (SDL_Init(SDL_INIT_VIDEO) != 0)
-   {
-      cerr << "SDL failed to initialise: \'" << getError() << endl;
-   }
-
-   //4.4 for glClearTex(Sub)Image
-   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 4);
-
-   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK,
-		       SDL_GL_CONTEXT_PROFILE_CORE);
-
-   uint32_t flags = (SDL_WINDOW_OPENGL |
-		     SDL_WINDOW_RESIZABLE);
-
-   window = SDL_CreateWindow("compute test",
-			     
-			     SDL_WINDOWPOS_CENTERED,
-			     SDL_WINDOWPOS_CENTERED,
-			     
-			     SCRN_WIDTH,
-			     SCRN_HEIGHT,
-			     
-			     flags);
-
-   if (!window)
-   {
-      //TODO throw?
-
-      cerr << "SDL failed to create window: \'" << getError() << endl;
-   }
-
-   context = SDL_GL_CreateContext(window);
-
-   if (!context)
-   {
-      cerr << "SDL failed to create OpenGL context: \'" << getError() << endl;
-   }
-
-   if (SDL_GL_SetSwapInterval(1) == -1)
-   {
-      //TODO
-
-      cerr << getError() << endl;
-   }
-
-   //Afaik this gives Glad the function by which it's to retrieve
-   //pointers to specific GL functions, and makes it do so for all it
-   //needs.
-   //TODO figure out how to error check the SDL version, since this
-   //one is actually void...!
-   if (!gladLoadGL())
-   //if (!gladLoadGLLoader((GLADloadproc) SDL_GL_GetProcAddress))
-   {
-      //TODO throw, etc.
-      
-      cerr << "Glad failed to load some OpenGL function." << endl;
-   }
-
-   then = SDL_GetTicks();
-}
-
-void sdlInstance::quit()
-{
-   SDL_DestroyWindow(window);
-   SDL_GL_DeleteContext(context);
-
-   SDL_Quit();
-}
-
-void sdlInstance::swapWindow()
-{
-   SDL_GL_SwapWindow(window);
-}
-
-void sdlInstance::pollEvents()
-//General-purpose event registering
-{
-   now = SDL_GetTicks();
-
-   while (SDL_PollEvent(&event))
-   {
-      switch (event.type)
-      {
-	 case SDL_QUIT:
-	 { key_quit = true; }
-	 
-	 case SDL_KEYDOWN:
-	 {
-	    switch (event.key.keysym.sym)
-	    {
-	       case SDLK_ESCAPE:
-	       { key_quit = true; break; }
-
-	       case SDLK_w:
-	       { key_w += now - event.key.timestamp; ++num_w; break; }
-	       case SDLK_s:
-	       { key_s += now - event.key.timestamp; ++num_s; break; }
-	       case SDLK_a:
-	       { key_a += now - event.key.timestamp; ++num_a; break; }
-	       case SDLK_d:
-	       { key_d += now - event.key.timestamp; ++num_d; break; }
-	    }
-
-	    break;
-	 }
-
-	 case SDL_KEYUP:
-	 {
-	    uint32_t dt = now - event.key.timestamp;
-	    
-	    switch (event.key.keysym.sym)
-	    {
-	       //Careful of overflow
-	       case SDLK_w:
-	       {
-		  if (dt >= key_w) { key_w = 0; }
-		  else { key_w -= dt; }
-		  break;
-	       }
-	       case SDLK_s:
-	       {
-		  if (dt >= key_s) { key_s = 0; }
-		  else { key_s -= dt; }
-		  break;
-	       }
-	       case SDLK_a:
-	       {
-		  if (dt >= key_a) { key_a = 0; }
-		  else { key_a -= dt; }
-		  break;
-	       }
-	       case SDLK_d:
-	       {
-		  if (dt >= key_d) { key_d = 0; }
-		  else { key_d -= dt; }
-		  break;
-	       }
-	    }
-
-	    break;
-	 }
-      }
-   }
-
-   then = now;
-}
-
-bool sdlInstance::getQuit() const { return key_quit; }
-
-uint32_t sdlInstance::takeW()
-{
-   uint32_t result = key_w;
-
-   key_w = 0;
-
-   return result;
-}
-
-uint32_t sdlInstance::takeS()
-{
-   uint32_t result = key_w;
-
-   key_s = 0;
-
-   return result;
-}
-
-uint32_t sdlInstance::takeA()
-{
-   uint32_t result = key_a;
-
-   key_a = 0;
-
-   return result;
-}
-
-uint32_t sdlInstance::takeD()
-{
-   uint32_t result = key_d;
-
-   key_d = 0;
-
-   return result;
-}
-
-uint32_t sdlInstance::takeNumW() { uint32_t result = num_w; num_w = 0; return result; }
-uint32_t sdlInstance::takeNumS() { uint32_t result = num_s; num_s = 0; return result; }
-uint32_t sdlInstance::takeNumA() { uint32_t result = num_a; num_a = 0; return result; }
-uint32_t sdlInstance::takeNumD() { uint32_t result = num_d; num_d = 0; return result; }
-
-bool sdlInstance::hasWindowChanged(int& x, int& y)
-{
-   int oldX = windowX;
-   int oldY = windowY;
-
-   //Despite the fact that SDL_CreateWindow uses pixels,
-   //SDL_GetWindowSize doesn't.
-   SDL_GL_GetDrawableSize(window, &windowX, &windowY);
-
-   //This saves time doing getWindowX() etc. (needed for image sizing)
-   x = windowX;
-   y = windowY;
-
-   //Whether it's changed
-   return (oldX == windowX) && (oldY == windowY);
 }
 
 string shader::read()
@@ -1033,7 +601,10 @@ bool getWkgpDimensions(uint32_t& xWkgps, uint32_t& yWkgps,
      variables, that would be the place to work around that.
    */
 
-   //These aren't the max globals (ie # invocations). They're max -numbers- of workgroups.
+   //These aren't the max globals (ie # invocations). They're max
+   //-numbers- of workgroups.
+   //These would be better done once and saved, etc.
+   
    GLint maxXWkgps, maxYWkgps;
 
    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT,
@@ -1069,146 +640,16 @@ void surfelModel::render(int localX, int localY)
 		     1);
 }
 
-float frustum::getFarDZ() const
-{
-   return nearDZ + planesDZ;
-}
-
-vec3 frustum::getDirX() const
-{
-   //By right-hand rule
-   return cross(dirZ, dirY);
-}
-
-mat4 frustum::getInverseTransformMatrix() const
-/*
-  Get a matrix factoring in the position and rotation of the camera.
-  This must be inverse because you're not actually using it on the
-  camera, but on all other objects; the camera can remain at
-  origin. That way movement of the camera will be registered visibly
-  in the movement of the other objects. (It's done this way because
-  it's simpler to render things with the viewpoint at origin. For one
-  thing you only need this one transform matrix rather than a
-  camera-relative transform for every object.)
-*/
-{
-   vec3 inversePos = pos.inverse();
-
-   //Don't inverse the directions. But you do need X
-   //(You would inverse direction if the camera stored a transitive
-   //transform (eg a quat) of an original camera direction; as is, I store the
-   //actual current direction in world coords.)
-   vec3 dirX = getDirX();
-
-   /*
-     I've inlined a matrix mult of the frustum's direction and
-     position here. They must be multiplied (rather than simply
-     putting the position in the translation slots of the matrix)
-     because the rotation is done in camera space, not in world space
-     (i.e. around the world origin).
-
-     It's equivalent to this:
-   */
-#if 0
-      return (mat4(dirX[0], dirX[1], dirX[2], 0.f,
-		   dirY[0], dirY[1], dirY[2], 0.f,
-		   dirZ[0], dirZ[1], dirZ[2], 0.f,
-		   0.f, 0.f, 0.f, 1.f)
-	   *
-	   mat4(1.f, 0.f, 0.f, 0.f,
-		0.f, 1.f, 0.f, 0.f,
-		0.f, 0.f, 1.f, 0.f,
-		inversePos[0], inversePos[1], inversePos[2], 1.f));
-#endif
-
-   //You can ignore the 4th row/column of these matrices since they're
-   //empty anyway.
-
-   //These are the translation elements of the finished matrix.
-   float nuPosX = (dirX[0] * inversePos[0] +
-		   dirY[0] * inversePos[1] +
-		   dirZ[0] * inversePos[2]);
-
-   float nuPosY = (dirX[1] * inversePos[0] +
-		   dirY[1] * inversePos[1] +
-		   dirZ[1] * inversePos[2]);
-
-   float nuPosZ = (dirX[2] * inversePos[0] +
-		   dirY[2] * inversePos[1] +
-		   dirZ[2] * inversePos[2]);
-
-   return mat4(dirX[0], dirY[0], dirZ[0], 0.f,
-	       dirX[1], dirY[1], dirZ[1], 0.f,
-	       dirX[2], dirY[2], dirZ[2], 0.f,
-	       nuPosX, nuPosY, nuPosZ, 1.f);
-}
-
-mat4 frustum::getPerspectiveMatrix() const
-{
-   //Conversion to radians is in constructor now
-   //Aspect ratio should be implicit
-   float posX = tan(horFov);
-   float posY = tan(verFov);
-
-   float zCol = 2 * nearDZ / planesDZ + 1;
-   float wCol = -2.f * getFarDZ() * nearDZ / planesDZ;
-
-   mat4 matrix = mat4(1.f / posX, 0.f, 0.f, 0.f,
-		      0.f, 1.f / posY, 0.f, 0.f,
-		      0.f, 0.f, zCol, 1.f,
-		      0.f, 0.f, wCol, 0.f);
-   
-   return matrix;
-}
-
-vec3 frustum::getPos() const
-{
-   return pos;
-}
-
-void frustum::setPos(vec3 nuPos)
-{
-   pos = nuPos;
-}
-
-vec3 frustum::getZ() const
-{
-   return dirZ;
-}
-
-void frustum::setAspectRatio(float aspRatio)
-{
-   //Compute new verFov.
-   verFov = atan(tan(horFov) / aspRatio);
-}
-
-void camera::pushTransformMatrix()
-{
-   mat4 transf = getPerspectiveMatrix() * getInverseTransformMatrix();
-
-   glUniformMatrix4fv(transformLoc,
-		      1,
-		      false,
-		      (GLfloat*) &transf);
-}
-
-void camera::rotate(axisAngle aa)
-{
-   if (aa.angle() == 0.f) { return; }
-
-   quaternion qu = quaternion(aa);
-
-   dirY = qu.rotate(dirY);
-   dirZ = qu.rotate(dirZ);
-}
-
 int main(int argc, char** args)
 {
    SDL_SetMainReady();
-   sdlInstance instance;
 
-   program surfelsToSamples = program("compute.c.glsl");   
-   program samplesToPixels = program("compute2.c.glsl");
+   int winX = 960; int winY = 540;
+   
+   sdlInstance instance = sdlInstance(winX, winY);
+
+   program surfelsToSamples = program("surfelsToSamples.c.glsl");   
+   program samplesToPixels = program("samplesToPixels.c.glsl");
 
    LOG_GL();
 
@@ -1231,10 +672,10 @@ int main(int argc, char** args)
    LOG_GL();
 
    surfelsToSamples.use();
-   samples.prep(SCRN_WIDTH * 2, SCRN_HEIGHT * 2);
+   samples.prep(winX * 2, winY * 2);
 
    samplesToPixels.use();
-   pixels.prep(SCRN_WIDTH, SCRN_HEIGHT);
+   pixels.prep(winX, winY);
 
    LOG_GL();
 
@@ -1289,16 +730,12 @@ int main(int argc, char** args)
 		       vec3(0.0, 1.0, 0.0), //dirY
 		       35.f, //horizontal fov
 		       pixels.getAspectRatio(), //aspect ratio
-		       1.f, 10.f); //irrelevant until you clip
+		       1.f, 10.f); //near, planes z
 
    LOG_GL();
 
    surfelsToSamples.use();
    cam.pushTransformMatrix();
-
-   LOG_GL();
-   
-   int winX, winY;
 
    LOG_GL();
 
@@ -1377,6 +814,8 @@ int main(int argc, char** args)
 
       surfels.render(surfelsToSamplesSizes[0], surfelsToSamplesSizes[1]); LOG_GL();
 
+      //Block until all image ops in the previous shader are done
+      //(more or less).
       glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
 
       samplesToPixels.use(); LOG_GL();
@@ -1403,12 +842,11 @@ int main(int argc, char** args)
 
       instance.swapWindow(); LOG_GL();
 
+      //Clear for next frame
       samples.clear();
       pixels.clear();
 
       LOG_GL();
-
-      //TODO may have to reattach pixels, since change in fb...?
       
       glClear(GL_COLOR_BUFFER_BIT); LOG_GL();
    }

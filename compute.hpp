@@ -1,103 +1,15 @@
 #pragma once
 
-#include <SDL2/SDL.h>
-
 #include <string>
 #include <vector>
-#include <fstream>
-#include <sstream>
 #include <cmath>
 
 #define GEOM_CPP
+#define GEOM_IMPL
 #include "../geom/geom.h"
-
-#define SCRN_WIDTH 960
-#define SCRN_HEIGHT 540
 
 using namespace std;
 using namespace geom;
-
-class pcdReader
-{
-private:
-   ifstream file;
-   istringstream line; //Buffer for line
-   string word; //Buffer for a word in the line
-
-   const string& getWord();
-   const string& getWordOnLine();
-   string getLine();
-   
-   bool seekWord(string str);
-
-   //For restoring place in file in failed ops
-   void getPlace(streampos& fileSave, string& lineSave, string& wordSave);
-   void setPlace(streampos fileSave, string lineSave, string wordSave);
-
-   size_t readHeader();
-   vector<float> readBody(size_t numSurfels);
-
-public:
-   ~pcdReader() { file.close(); }
-   
-   void prep(const string filename);
-   
-   vector<float> read();
-};
-
-class sdlInstance
-{
-private:
-   SDL_Window* window;
-   SDL_GLContext context;
-
-   SDL_Event event;
-
-   int windowX, windowY;
-
-   //Last frame and this frame
-   uint32_t then, now;
-
-   //Following stuff is event-handling specific; could be in its own
-   //class
-   bool key_quit;
-   uint32_t key_w, key_s, key_a, key_d;
-   uint32_t num_w, num_s, num_a, num_d;
-
-   //SDL_GetError is meant only to be valid after a failing SDL
-   //call. So it makes sense that it's private.
-   const char* getError();
-
-public:
-   sdlInstance()
-      : window (nullptr)
-      , windowX (SCRN_WIDTH), windowY (SCRN_HEIGHT)
-      , then (0), now(0)
-      , key_quit (false)
-      , key_w (0), key_s (0), key_a (0), key_d (0)
-      , num_w (0), num_s (0), num_a (0), num_d (0)
-   { prep(); }
-
-   void swapWindow();
-   bool hasWindowChanged(int& x, int& y);
-   void pollEvents();
-
-   bool getQuit() const;
-
-   //'take' because they're not const; they subtract values
-   uint32_t takeW();
-   uint32_t takeS();
-   uint32_t takeA();
-   uint32_t takeD();
-
-   uint32_t takeNumW();
-   uint32_t takeNumS();
-   uint32_t takeNumA();
-   uint32_t takeNumD();
-   
-   void prep();
-   void quit();
-};
 
 class shader
 {
@@ -234,59 +146,4 @@ public:
    void prep(const string fileName, GLuint binding);
    
    void render(int localX, int localY);
-};
-
-class frustum
-{
-protected:
-   vec3 pos; //Position
-   vec3 dirZ, dirY; //Z and Y axes (rotation)
-   float horFov, verFov; //Fields of view
-   float nearDZ, planesDZ; //distance from position to near plane;
-			   //from near plane to far plane
-
-   float getFarDZ() const;
-   vec3 getDirX() const;
-
-public:
-   frustum(vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
-	   float nuHorFov, float aspRatio,
-	   float nuNearDZ, float nuPlanesDZ)
-      : pos(nuPos)
-      , dirZ (nuDirZ), dirY (nuDirY)
-      ,	horFov (radians(nuHorFov / 2.f))
-      , verFov (atan(tan(horFov) / aspRatio))
-      ,	nearDZ (nuNearDZ), planesDZ (nuPlanesDZ)
-   {}
-
-   mat4 getInverseTransformMatrix() const;
-   mat4 getPerspectiveMatrix() const;
-
-   vec3 getPos() const;
-   void setPos(vec3 nuPos);
-
-   vec3 getZ() const;
-   vec3 getY() const { return dirY; } //TODO remove
-
-   void setAspectRatio(float aspRatio);
-};
-
-class camera : public frustum
-{
-protected:
-   GLint transformLoc;
-   
-public:
-   camera(GLint transfLoc, vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
-	  float nuHorFov, float aspRatio,
-	  float nuNearDZ, float nuPlanesDZ)
-      : frustum(nuPos, nuDirZ, nuDirY,
-		nuHorFov, aspRatio,
-		nuNearDZ, nuPlanesDZ)
-      , transformLoc (transfLoc)
-   {}
-   
-   void pushTransformMatrix();
-
-   void rotate(axisAngle aa);
 };
