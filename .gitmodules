@@ -1,0 +1,3 @@
+[submodule "lib/geom"]
+	path = lib/geom
+	url = https://github.com/asgii/geom.h.git
