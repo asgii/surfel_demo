@@ -677,9 +677,9 @@ int main(int argc, char** args)
    
    sdlInstance instance = sdlInstance(winX, winY);
 
-   program surfelsToSamples = program("resources/surfelsToSamples.c.glsl");
+   program surfelsToSamples = program("resources/shaders/surfelsToSamples.c.glsl");
    
-   program samplesToPixels = program("resources/samplesToPixels.c.glsl");
+   program samplesToPixels = program("resources/shaders/samplesToPixels.c.glsl");
 
    LOG_GL();
 
@@ -718,14 +718,14 @@ int main(int argc, char** args)
    surfelModel surfels; LOG_GL();
 
    const GLuint surfelsBinding = 3;
-   string fileName = "resources/";
+   string fileName = "resources/models/";
    
    if (argc > 1)
    {
       fileName = fileName + args[1];
    }
 
-   else fileName = "resources/ism_train_horse.pcd";
+   else fileName = "resources/models/ism_train_horse.pcd";
 
    try
    {
