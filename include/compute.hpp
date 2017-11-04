@@ -6,7 +6,8 @@
 
 #define GEOM_CPP
 #define GEOM_IMPL
-#include "../geom/geom.h"
+#include "../lib/geom/geom.h"
+#undef GEOM_IMPL
 
 using namespace std;
 using namespace geom;
@@ -23,13 +24,8 @@ private:
 
    string getLogGL();
 public:
-   shader(const string& nm)
-      : filename (nm)
-      , kind (GL_COMPUTE_SHADER)
-      , handle (0)
-   {}
-
-   ~shader() { quit(); }
+   shader(const string& nm);
+   ~shader();
    
    bool prep(GLuint program);
    void quit();
@@ -45,11 +41,8 @@ private:
    string getLogGL();
 
 public:
-   program(const string& shaderNm)
-      : handle (0)
-      , compute (shaderNm)
-   { prep(); }
-   ~program() { quit(); }
+   program(const string& shaderNm);
+   ~program();
    
    bool prep();
    void quit();
@@ -79,11 +72,8 @@ private:
    void pushSize();
 
 public:
-   image(GLint sizeLocation)
-      : handle (0)
-      , xyLoc (sizeLocation)
-   { xy[0] = 0; xy[1] = 0; }
-   ~image() { quit(); }
+   image(GLint sizeLocation);
+   ~image();
    
    void prep(GLuint width, GLuint height);
    void quit();
@@ -103,8 +93,8 @@ private:
    GLuint handle;
    
 public:
-   framebuffer() : handle (0) {};
-   ~framebuffer() { quit(); }
+   framebuffer();
+   ~framebuffer();
    
    bool prep(image& img);
    void quit();
@@ -122,8 +112,8 @@ private:
    size_t nBytes;
 
 public:
-   buffer() : handle (0) , nBytes (0) {}
-   ~buffer() { quit(); }
+   buffer();
+   ~buffer();
    
    void prep(vector<float> data, GLuint binding);
    void quit();
@@ -139,8 +129,6 @@ private:
    buffer data;
 
    size_t getNumSurfels() const;
-
-   //TODO preprocess non-surfel model here?
 
 public:
    void prep(const string fileName, GLuint binding);

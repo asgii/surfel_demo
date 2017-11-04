@@ -1,13 +1,17 @@
 SDL = `sdl2-config --cflags --libs`
-GLAD = glad.c -ldl
+GLAD = lib/glad/src/glad.c -ldl
 
-SRC = compute.cpp projection.cpp pcdReader.cpp sdl_utils.cpp
+LIBS = $(SDL) $(GLAD)
+
+SRC = $(addprefix src/, compute.cpp projection.cpp pcdReader.cpp sdl_utils.cpp)
+
+DST = build/demo
 
 clang:
-	clang++ $(SRC) $(SDL) $(GLAD) -std=c++14 -O2 -o compute
+	clang++ $(SRC) $(LIBS) -std=c++14 -O2 -o $(DST)
 
 gcc:
-	g++ $(SRC) $(SDL) $(GLAD) -std=c++14 -O2 -o compute
+	g++ $(SRC) $(LIBS) -std=c++14 -O2 -o $(DST)
 
 clean:
-	rm -f compute
+	rm -f $(DST)

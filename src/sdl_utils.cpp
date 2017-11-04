@@ -1,6 +1,6 @@
-#include <glad/glad.h>
+#include "../lib/glad/include/glad/glad.h"
 
-#include "sdl_utils.hpp"
+#include "../include/sdl_utils.hpp"
 
 #include <iostream>
 

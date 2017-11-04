@@ -2,10 +2,10 @@
 
 #include <cmath> //for tan, atan
 
-#include <glad/glad.h>
+#include "../lib/glad/include/glad/glad.h"
 
 #define GEOM_CPP
-#include "../geom/geom.h"
+#include "../lib/geom/geom.h"
 
 using namespace geom;
 

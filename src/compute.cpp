@@ -1,9 +1,9 @@
-#include <glad/glad.h>
+#include "../lib/glad/include/glad/glad.h"
 
-#include "compute.hpp"
-#include "projection.hpp"
-#include "pcdReader.hpp"
-#include "sdl_utils.hpp"
+#include "../include/compute.hpp"
+#include "../include/projection.hpp"
+#include "../include/pcdReader.hpp"
+#include "../include/sdl_utils.hpp"
 
 #include <iostream>
 #include <map>
@@ -75,6 +75,14 @@ void printErrorsGL()
 
    cerr << flush;
 }
+
+shader::shader(const string& nm)
+   : filename (nm)
+   , kind (GL_COMPUTE_SHADER)
+   , handle (0)
+{}
+
+shader::~shader() { quit(); }
 
 string shader::read()
 {
@@ -250,6 +258,13 @@ void shader::quit()
    glDeleteShader(handle);
 }
 
+program::program(const string& shaderNm)
+   : handle (0)
+   , compute (shaderNm)
+{ prep(); }
+
+program::~program() { quit(); }
+
 string program::getLogGL()
 {
    GLint len = 0;
@@ -319,6 +334,10 @@ void program::use()
 
 GLuint program::getHandle() { return handle; }
 
+framebuffer::framebuffer() : handle (0) {};
+
+framebuffer::~framebuffer() { quit(); }
+
 bool framebuffer::prep(image& img)
 {
    glGenFramebuffers(1, &handle);
@@ -355,6 +374,13 @@ void framebuffer::quit()
 {
    glDeleteFramebuffers(1, &handle);
 }
+
+image::image(GLint sizeLocation)
+   : handle (0)
+   , xyLoc (sizeLocation)
+{ xy[0] = 0; xy[1] = 0; }
+
+image::~image() { quit(); }
 
 void image::prep(GLuint width, GLuint height)
 {
@@ -493,6 +519,9 @@ float image::getAspectRatio() const
 {
    return (float) xy[0] / (float) xy[1];
 }
+
+buffer::buffer() : handle (0) , nBytes (0) {}
+buffer::~buffer() { quit(); }
 
 void buffer::prep(vector<float> data, GLuint binding)
 {
@@ -648,8 +677,9 @@ int main(int argc, char** args)
    
    sdlInstance instance = sdlInstance(winX, winY);
 
-   program surfelsToSamples = program("surfelsToSamples.c.glsl");   
-   program samplesToPixels = program("samplesToPixels.c.glsl");
+   program surfelsToSamples = program("resources/surfelsToSamples.c.glsl");
+   
+   program samplesToPixels = program("resources/samplesToPixels.c.glsl");
 
    LOG_GL();
 
@@ -688,14 +718,14 @@ int main(int argc, char** args)
    surfelModel surfels; LOG_GL();
 
    const GLuint surfelsBinding = 3;
-   string fileName;
+   string fileName = "resources/";
    
    if (argc > 1)
    {
-      fileName = args[1];
+      fileName = fileName + args[1];
    }
 
-   else fileName = "ism_train_horse.pcd";
+   else fileName = "resources/ism_train_horse.pcd";
 
    try
    {
