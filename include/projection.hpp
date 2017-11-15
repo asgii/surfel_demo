@@ -48,6 +48,8 @@ class camera : public frustum
 {
 protected:
    GLint transformLoc;
+
+   void rotate(axisAngle aa);
    
 public:
    camera(GLint transfLoc, vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
@@ -61,5 +63,6 @@ public:
    
    void pushTransformMatrix();
 
-   void rotate(axisAngle aa);
+   void rotateY(uint32_t dt, bool ccw);
+   void moveZ(uint32_t dt, bool forward);
 };

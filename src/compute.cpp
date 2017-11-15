@@ -775,46 +775,30 @@ int main(int argc, char** args)
 
       instance.pollEvents();
 
-      const float speed = 5.f;
-      const float angle = 0.0005;
+      uint32_t numW = instance.takeNumW();
+      uint32_t numS = instance.takeNumS();
       
-      if (uint32_t numW = instance.takeNumW())
+      if (numW or numS)
       {
-	 vec3 pos = cam.getPos();
+	 bool forward = numW > numS;
 
-	 pos = pos + cam.getZ() * (float) numW * speed;
+	 float sum = max(numW, numS) - min(numW, numS);
 
-	 cam.setPos(pos);
-
-	 cameraMoved = true;
-      }
-
-      if (uint32_t numS = instance.takeNumS())
-      {
-	 vec3 pos = cam.getPos();
-
-	 pos = pos - cam.getZ() * (float) numS * speed;
-
-	 cam.setPos(pos);
-
-	 cameraMoved = true;
-      }
-
-      if (uint32_t numA = instance.takeNumA())
-      {
-//	 vec3 axisRot = vec3(0.f, 1.f, 0.f);
-	 vec3 axisRot = cam.getY();
-
-	 float finalDegrees = -angle * numA;
+	 cam.moveZ(sum, forward);
 	 
-	 cam.rotate(axisAngle(axisRot, finalDegrees));
-
 	 cameraMoved = true;
       }
 
-      if (uint32_t numD = instance.takeNumD())
+      uint32_t numA = instance.takeNumA();
+      uint32_t numD = instance.takeNumD();
+
+      if (numA or numD)
       {
-	 cam.rotate(axisAngle(vec3(0.f, 1.f, 0.f), angle * numD));
+	 bool cw = numD > numA;
+
+	 uint32_t sum = max(numD, numA) - min(numD, numA);
+
+	 cam.rotateY(sum, cw);
 
 	 cameraMoved = true;
       }

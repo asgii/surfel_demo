@@ -134,3 +134,21 @@ void camera::rotate(axisAngle aa)
    dirY = qu.rotate(dirY);
    dirZ = qu.rotate(dirZ);
 }
+
+void camera::rotateY(uint32_t dt, bool ccw)
+{
+   const vec3 y = vec3(0.f, 1.f, 0.f);
+
+   const float angle = 0.0005;
+
+   float rot = angle * dt;
+
+   rotate(axisAngle(y, ccw ? -rot : rot));
+}
+
+void camera::moveZ(uint32_t dt, bool forward)
+{
+   const float speed = 5.f;
+
+   pos = pos + getZ() * (float) dt * (forward ? speed : -speed);   
+}
