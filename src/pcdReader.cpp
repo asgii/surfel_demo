@@ -1,4 +1,4 @@
-#include "../include/pcdReader.hpp"
+#include "pcdReader.hpp"
 
 #include <iostream>
 

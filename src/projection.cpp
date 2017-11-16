@@ -1,4 +1,4 @@
-#include "../include/projection.hpp"
+#include "projection.hpp"
 
 #include <cmath>
 

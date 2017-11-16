@@ -1,9 +1,9 @@
 #include "../lib/glad/include/glad/glad.h"
 
-#include "../include/compute.hpp"
-#include "../include/projection.hpp"
-#include "../include/pcdReader.hpp"
-#include "../include/sdl_utils.hpp"
+#include "compute.hpp"
+#include "projection.hpp"
+#include "pcdReader.hpp"
+#include "sdl_utils.hpp"
 
 #include <iostream>
 #include <map>
