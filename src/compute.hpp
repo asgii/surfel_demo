@@ -3,28 +3,40 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <iostream>
+#include <map>
 
 #define GEOM_CPP
-#define GEOM_IMPL
 #include "../lib/geom/geom.h"
-#undef GEOM_IMPL
 
-using namespace std;
-using namespace geom;
+//This is so a single error can be inputted for places in a loop.
+//Still won't work with multiple files yet (since a function in
+//another file could be called in 2 places in the same loop and should
+//perhaps be logged twice? TODO) so I've left in printErrorGL().
+extern std::map<int, std::string> errorsGL;
+
+std::string getErrorGL();
+void printErrorGL(const char* file, int line);
+void logErrorGL(int line);
+void printErrorsGL();
+
+bool getWkgpDimensions(uint32_t& xWkgps, uint32_t& yWkgps,
+		       uint32_t localX, uint32_t localY,
+		       uint32_t reqGlobalX, uint32_t reqGlobalY);
 
 class shader
 {
 private:
-   string filename;
+   std::string filename;
 
    GLenum kind;
    GLuint handle;
 
-   string read();
+   std::string read();
 
-   string getLogGL();
+   std::string getLogGL();
 public:
-   shader(const string& nm);
+   shader(const std::string& nm);
    ~shader();
    
    bool prep(GLuint program);
@@ -38,10 +50,10 @@ private:
 
    shader compute;
 
-   string getLogGL();
+   std::string getLogGL();
 
 public:
-   program(const string& shaderNm);
+   program(const std::string& shaderNm);
    ~program();
    
    bool prep();
@@ -115,7 +127,7 @@ public:
    buffer();
    ~buffer();
    
-   void prep(vector<float> data, GLuint binding);
+   void prep(std::vector<float> data, GLuint binding);
    void quit();
 
    void clear();
@@ -131,7 +143,7 @@ private:
    size_t getNumSurfels() const;
 
 public:
-   void prep(const string fileName, GLuint binding);
+   void prep(const std::string fileName, GLuint binding);
    
    void render(int localX, int localY);
 };

@@ -3,7 +3,7 @@ GLAD = lib/glad/src/glad.c -ldl
 
 LIBS = $(SDL) $(GLAD)
 
-SRC = $(addprefix src/, compute.cpp projection.cpp pcdReader.cpp sdl_utils.cpp)
+SRC = $(addprefix src/, main.cpp compute.cpp projection.cpp pcdReader.cpp sdl_utils.cpp)
 
 DST = build/demo
 

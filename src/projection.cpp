@@ -7,13 +7,15 @@ float frustum::getFarDZ() const
    return nearDZ + planesDZ;
 }
 
-vec3 frustum::getDirX() const
+geom::vec3
+frustum::getDirX() const
 {
    //By right-hand rule
    return cross(dirZ, dirY);
 }
 
-mat4 frustum::getInverseTransformMatrix() const
+geom::mat4
+frustum::getInverseTransformMatrix() const
 /*
   Get a matrix factoring in the position and rotation of the camera.
   This must be inverse because you're not actually using it on the
@@ -25,13 +27,13 @@ mat4 frustum::getInverseTransformMatrix() const
   camera-relative transform for every object.)
 */
 {
-   vec3 inversePos = pos.inverse();
+   geom::vec3 inversePos = pos.inverse();
 
    //Don't inverse the directions. But you do need X
    //(You would inverse direction if the camera stored a transitive
    //transform (eg a quat) of an original camera direction; as is, I store the
    //actual current direction in world coords.)
-   vec3 dirX = getDirX();
+   geom::vec3 dirX = getDirX();
 
    /*
      I've inlined a matrix mult of the frustum's direction and
@@ -43,15 +45,15 @@ mat4 frustum::getInverseTransformMatrix() const
      It's equivalent to this:
    */
 #if 0
-      return (mat4(dirX[0], dirX[1], dirX[2], 0.f,
-		   dirY[0], dirY[1], dirY[2], 0.f,
-		   dirZ[0], dirZ[1], dirZ[2], 0.f,
-		   0.f, 0.f, 0.f, 1.f)
-	   *
-	   mat4(1.f, 0.f, 0.f, 0.f,
-		0.f, 1.f, 0.f, 0.f,
-		0.f, 0.f, 1.f, 0.f,
-		inversePos[0], inversePos[1], inversePos[2], 1.f));
+      return (geom::mat4(dirX[0], dirX[1], dirX[2], 0.f,
+			 dirY[0], dirY[1], dirY[2], 0.f,
+			 dirZ[0], dirZ[1], dirZ[2], 0.f,
+			 0.f, 0.f, 0.f, 1.f)
+	      *
+	      geom::mat4(1.f, 0.f, 0.f, 0.f,
+			 0.f, 1.f, 0.f, 0.f,
+			 0.f, 0.f, 1.f, 0.f,
+			 inversePos[0], inversePos[1], inversePos[2], 1.f));
 #endif
 
    //You can ignore the 4th row/column of these matrices since they're
@@ -70,13 +72,14 @@ mat4 frustum::getInverseTransformMatrix() const
 		   dirY[2] * inversePos[1] +
 		   dirZ[2] * inversePos[2]);
 
-   return mat4(dirX[0], dirY[0], dirZ[0], 0.f,
-	       dirX[1], dirY[1], dirZ[1], 0.f,
-	       dirX[2], dirY[2], dirZ[2], 0.f,
-	       nuPosX, nuPosY, nuPosZ, 1.f);
+   return geom::mat4(dirX[0], dirY[0], dirZ[0], 0.f,
+		     dirX[1], dirY[1], dirZ[1], 0.f,
+		     dirX[2], dirY[2], dirZ[2], 0.f,
+		     nuPosX, nuPosY, nuPosZ, 1.f);
 }
 
-mat4 frustum::getPerspectiveMatrix() const
+geom::mat4
+frustum::getPerspectiveMatrix() const
 {
    //Conversion to radians is in constructor now
    //Aspect ratio should be implicit
@@ -86,38 +89,43 @@ mat4 frustum::getPerspectiveMatrix() const
    float zCol = 2 * nearDZ / planesDZ + 1;
    float wCol = -2.f * getFarDZ() * nearDZ / planesDZ;
 
-   mat4 matrix = mat4(1.f / posX, 0.f, 0.f, 0.f,
-		      0.f, 1.f / posY, 0.f, 0.f,
-		      0.f, 0.f, zCol, 1.f,
-		      0.f, 0.f, wCol, 0.f);
+   geom::mat4 matrix = geom::mat4(1.f / posX, 0.f, 0.f, 0.f,
+				  0.f, 1.f / posY, 0.f, 0.f,
+				  0.f, 0.f, zCol, 1.f,
+				  0.f, 0.f, wCol, 0.f);
    
    return matrix;
 }
 
-vec3 frustum::getPos() const
+geom::vec3
+frustum::getPos() const
 {
    return pos;
 }
 
-void frustum::setPos(vec3 nuPos)
+void
+frustum::setPos(geom::vec3 nuPos)
 {
    pos = nuPos;
 }
 
-vec3 frustum::getZ() const
+geom::vec3
+frustum::getZ() const
 {
    return dirZ;
 }
 
-void frustum::setAspectRatio(float aspRatio)
+void
+frustum::setAspectRatio(float aspRatio)
 {
    //Compute new verFov.
    verFov = atan(tan(horFov) / aspRatio);
 }
 
-void camera::pushTransformMatrix()
+void
+camera::pushTransformMatrix()
 {
-   mat4 transf = getPerspectiveMatrix() * getInverseTransformMatrix();
+   geom::mat4 transf = getPerspectiveMatrix() * getInverseTransformMatrix();
 
    glUniformMatrix4fv(transformLoc,
 		      1,
@@ -125,28 +133,31 @@ void camera::pushTransformMatrix()
 		      (GLfloat*) &transf);
 }
 
-void camera::rotate(axisAngle aa)
+void
+camera::rotate(geom::axisAngle aa)
 {
    if (aa.angle() == 0.f) { return; }
 
-   quaternion qu = quaternion(aa);
+   geom::quaternion qu = geom::quaternion(aa);
 
    dirY = qu.rotate(dirY);
    dirZ = qu.rotate(dirZ);
 }
 
-void camera::rotateY(uint32_t dt, bool ccw)
+void
+camera::rotateY(uint32_t dt, bool ccw)
 {
-   const vec3 y = vec3(0.f, 1.f, 0.f);
+   const geom::vec3 y = geom::vec3(0.f, 1.f, 0.f);
 
    const float angle = 0.0005;
 
    float rot = angle * dt;
 
-   rotate(axisAngle(y, ccw ? -rot : rot));
+   rotate(geom::axisAngle(y, ccw ? -rot : rot));
 }
 
-void camera::moveZ(uint32_t dt, bool forward)
+void
+camera::moveZ(uint32_t dt, bool forward)
 {
    const float speed = 5.f;
 

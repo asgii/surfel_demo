@@ -7,22 +7,20 @@
 #define GEOM_CPP
 #include "../lib/geom/geom.h"
 
-using namespace geom;
-
 class frustum
 {
 protected:
-   vec3 pos; //Position
-   vec3 dirZ, dirY; //Z and Y axes (rotation)
+   geom::vec3 pos; //Position
+   geom::vec3 dirZ, dirY; //Z and Y axes (rotation)
    float horFov, verFov; //Fields of view
    float nearDZ, planesDZ; //distance from position to near plane;
 			   //from near plane to far plane
 
    float getFarDZ() const;
-   vec3 getDirX() const;
+   geom::vec3 getDirX() const;
 
 public:
-   frustum(vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
+   frustum(geom::vec3 nuPos, geom::vec3 nuDirZ, geom::vec3 nuDirY,
 	   float nuHorFov, float aspRatio,
 	   float nuNearDZ, float nuPlanesDZ)
       : pos(nuPos)
@@ -32,14 +30,14 @@ public:
       ,	nearDZ (nuNearDZ), planesDZ (nuPlanesDZ)
    {}
 
-   mat4 getInverseTransformMatrix() const;
-   mat4 getPerspectiveMatrix() const;
+   geom::mat4 getInverseTransformMatrix() const;
+   geom::mat4 getPerspectiveMatrix() const;
 
-   vec3 getPos() const;
-   void setPos(vec3 nuPos);
+   geom::vec3 getPos() const;
+   void setPos(geom::vec3 nuPos);
 
-   vec3 getZ() const;
-   vec3 getY() const { return dirY; } //TODO remove
+   geom::vec3 getZ() const;
+   geom::vec3 getY() const { return dirY; } //TODO remove
 
    void setAspectRatio(float aspRatio);
 };
@@ -49,10 +47,11 @@ class camera : public frustum
 protected:
    GLint transformLoc;
 
-   void rotate(axisAngle aa);
+   void rotate(geom::axisAngle aa);
    
 public:
-   camera(GLint transfLoc, vec3 nuPos, vec3 nuDirZ, vec3 nuDirY,
+   camera(GLint transfLoc,
+	  geom::vec3 nuPos, geom::vec3 nuDirZ, geom::vec3 nuDirY,
 	  float nuHorFov, float aspRatio,
 	  float nuNearDZ, float nuPlanesDZ)
       : frustum(nuPos, nuDirZ, nuDirY,
