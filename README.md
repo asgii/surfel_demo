@@ -1,5 +1,7 @@
 # Surfel renderer demo
 
+![](demo_pic.png?raw=true)
+
 This is a reasonably simple demo of a surfel renderer using OpenGL compute shaders.
 
 ## Build instructions
