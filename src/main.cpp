@@ -14,6 +14,67 @@
 #define errorGL() printErrorGL(__FILE__, __LINE__)
 #define LOG_GL() logErrorGL(__LINE__)
 
+bool
+handleEvents(sdlInstance& inst, camera& cam)
+{
+   bool cameraMoved = false;
+
+   uint32_t numW = inst.takeNumW();
+   uint32_t numS = inst.takeNumS();
+      
+   if (numW or numS)
+   {
+      bool forward = numW > numS;
+
+      float sum = max(numW, numS) - min(numW, numS);
+
+      cam.moveZ(sum, forward);
+	 
+      cameraMoved = true;
+   }
+
+   uint32_t numA = inst.takeNumA();
+   uint32_t numD = inst.takeNumD();
+
+   if (numA or numD)
+   {
+      bool cw = numD > numA;
+
+      uint32_t sum = max(numD, numA) - min(numD, numA);
+
+      cam.rotateY(sum, cw);
+
+      cameraMoved = true;
+   }
+
+   return cameraMoved;
+}
+
+bool
+handleWindowResize(sdlInstance& inst,
+		   int& winX, int& winY,
+		   image& samples, image& pixels)
+{
+   bool cameraMoved = false;
+   
+   if (inst.hasWindowChanged(winX, winY))
+   {
+      //These also do associated uniforms
+      samples.resize(winX * 2, winY * 2);
+      pixels.resize(winX, winY);
+
+      //Don't update aspect ratio based on new sizes though - it's weird.
+
+      //Perspective matrix will need re-uniforming since it
+      //will have aspect ratio baked in
+      cameraMoved = true;
+	 
+      //Framebuffer seems not to need re-connecting to texture, either.
+   }
+
+   return cameraMoved;
+}
+
 int main(int argc, char** args)
 {
    SDL_SetMainReady();
@@ -116,60 +177,20 @@ int main(int argc, char** args)
 
    while (!instance.getQuit())
    {
-      bool cameraMoved = false;
-
       instance.pollEvents();
 
-      uint32_t numW = instance.takeNumW();
-      uint32_t numS = instance.takeNumS();
-      
-      if (numW or numS)
-      {
-	 bool forward = numW > numS;
-
-	 float sum = max(numW, numS) - min(numW, numS);
-
-	 cam.moveZ(sum, forward);
-	 
-	 cameraMoved = true;
-      }
-
-      uint32_t numA = instance.takeNumA();
-      uint32_t numD = instance.takeNumD();
-
-      if (numA or numD)
-      {
-	 bool cw = numD > numA;
-
-	 uint32_t sum = max(numD, numA) - min(numD, numA);
-
-	 cam.rotateY(sum, cw);
-
-	 cameraMoved = true;
-      }
+      //
+      bool cameraMoved = handleEvents(instance, cam);
 
       //If the window's size has changed, size of buffers must change
-      //with it.      
-      if (instance.hasWindowChanged(winX, winY))
-      {
-	 //These also do associated uniforms
-	 samples.resize(winX * 2, winY * 2);
-	 pixels.resize(winX, winY);
-
-	 //Don't update aspect ratio based on new sizes though - it's weird.
-
-	 //Perspective matrix will need re-uniforming since it
-	 //will have aspect ratio baked in
-	 cameraMoved = true;
-
-	 //Framebuffer seems not to need re-connecting to texture, either.
-      }
+      //with it.
+      cameraMoved = (handleWindowResize(instance,
+					winX, winY,
+					samples, pixels) or
+		     cameraMoved);
 
       surfelsToSamples.use(); LOG_GL();
-
-      if (cameraMoved) { cam.pushTransformMatrix(); }
-
-      LOG_GL();
+      if (cameraMoved) { cam.pushTransformMatrix(); } LOG_GL();
 
       surfels.render(surfelsToSamplesSizes[0], surfelsToSamplesSizes[1]); LOG_GL();
 
