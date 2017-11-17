@@ -105,7 +105,7 @@ int main(int argc, char** args)
 		       geom::vec3(0.0, 1.0, 0.0), //dirY
 		       35.f, //horizontal fov
 		       pixels.getAspectRatio(), //aspect ratio
-		       1.f, 10.f); //near, planes z
+		       1.f, 1000.f); //near, planes z
 
    LOG_GL();
 
