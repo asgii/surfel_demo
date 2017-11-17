@@ -1,6 +1,6 @@
 # Surfel renderer demo
 
-![screenshot](./demo_pic.png "")
+![](demo_pic.png?raw=true)
 
 This is a reasonably simple demo of a surfel renderer using OpenGL compute shaders.
 
