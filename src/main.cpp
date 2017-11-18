@@ -19,6 +19,19 @@ handleEvents(sdlInstance& inst, camera& cam)
 {
    bool cameraMoved = false;
 
+   //Mouse movement
+   int x, y;
+
+   inst.getMouseDelta(x, y);
+
+   if (abs(y)) { cam.rotateX(y); cameraMoved = true; }
+   if (abs(x))
+   {
+      cam.rotateY((uint32_t) abs(x), x < 0);
+      cameraMoved = true;
+   }
+
+   //Forward and backward movement
    uint32_t numW = inst.takeNumW();
    uint32_t numS = inst.takeNumS();
       
@@ -33,6 +46,7 @@ handleEvents(sdlInstance& inst, camera& cam)
       cameraMoved = true;
    }
 
+   //Left and right movement
    uint32_t numA = inst.takeNumA();
    uint32_t numD = inst.takeNumD();
 
@@ -75,7 +89,8 @@ handleWindowResize(sdlInstance& inst,
    return cameraMoved;
 }
 
-int main(int argc, char** args)
+int
+main(int argc, char** args)
 {
    SDL_SetMainReady();
 
@@ -179,7 +194,6 @@ int main(int argc, char** args)
    {
       instance.pollEvents();
 
-      //
       bool cameraMoved = handleEvents(instance, cam);
 
       //If the window's size has changed, size of buffers must change

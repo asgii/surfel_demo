@@ -62,6 +62,8 @@ public:
    
    void pushTransformMatrix();
 
+   //Rotate around Y or X axes
    void rotateY(uint32_t dt, bool ccw);
+   void rotateX(int dx);
    void moveZ(uint32_t dt, bool forward);
 };

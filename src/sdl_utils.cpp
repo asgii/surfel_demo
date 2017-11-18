@@ -10,12 +10,18 @@ sdlInstance::sdlInstance(int winX, int winY)
    : window (nullptr)
    , windowX (winX), windowY (winY)
    , then (0), now(0)
+   , lengthFrame (0)
    , key_quit (false)
    , key_w (0), key_s (0), key_a (0), key_d (0)
    , num_w (0), num_s (0), num_a (0), num_d (0)
+   , mouseX (0), mouseY (0)
+   , mouseDX (0), mouseDY (0)
+   , panning (false)
+   , panningX (0), panningY (0)
 { prep(); }
 
-const char* sdlInstance::getError()
+const char*
+sdlInstance::getError()
 {
    const char* result = SDL_GetError();
 
@@ -24,7 +30,8 @@ const char* sdlInstance::getError()
    return result;
 }
 
-void sdlInstance::prep()
+void
+sdlInstance::prep()
 {
    if (SDL_Init(SDL_INIT_VIDEO) != 0)
    {
@@ -88,7 +95,8 @@ void sdlInstance::prep()
    then = SDL_GetTicks();
 }
 
-void sdlInstance::quit()
+void
+sdlInstance::quit()
 {
    SDL_DestroyWindow(window);
    SDL_GL_DeleteContext(context);
@@ -96,15 +104,75 @@ void sdlInstance::quit()
    SDL_Quit();
 }
 
-void sdlInstance::swapWindow()
+void
+sdlInstance::swapWindow()
 {
    SDL_GL_SwapWindow(window);
 }
 
-void sdlInstance::pollEvents()
+void
+sdlInstance::updateLengthFrame()
+{
+   uint32_t sum = now - then;
+
+   //Underflow protection
+   lengthFrame = (sum > now) ? 0 : sum;
+}
+
+uint32_t
+sdlInstance::getLengthFrame() const
+{
+   return lengthFrame;
+}
+
+void
+sdlInstance::startPanning(const SDL_Event& event)
+{
+   panning = true;
+
+   panningX = event.button.x;
+   panningY = event.button.y;
+}
+
+void
+sdlInstance::completePanning(const SDL_Event& event)
+{
+   mouseX = event.button.x;
+   mouseY = event.button.y;
+   
+   mouseDX = panningX - mouseX;
+   mouseDY = panningY - mouseY;
+   
+   panning = false;
+}
+
+void
+sdlInstance::completePanning()
+{
+   SDL_GetMouseState(&mouseX, &mouseY);
+
+   mouseDX = panningX - mouseX;
+   mouseDY = panningY - mouseY;
+
+   //Update panning x,y too - to reflect that you've put them in
+   //dx,dy
+   panningX = mouseX;
+   panningY = mouseY;
+
+   //Don't end panning; this fn is for when panning continues through
+   //end of frame
+}
+
+void
+sdlInstance::pollEvents()
 //General-purpose event registering
 {
    now = SDL_GetTicks();
+
+   updateLengthFrame();
+
+   //Assuming they're handled every frame
+   mouseDX = 0; mouseDY = 0;
 
    while (SDL_PollEvent(&event))
    {
@@ -112,26 +180,57 @@ void sdlInstance::pollEvents()
       {
 	 case SDL_QUIT:
 	 { key_quit = true; }
+	 break;
+
+	 case SDL_MOUSEBUTTONDOWN:
+	 {
+	    switch (event.button.button)
+	    {
+	       case SDL_BUTTON_LEFT:
+	       {
+		  startPanning(event);
+	       }
+	       break;
+	    }
+	 }
+	 break;
+
+	 case SDL_MOUSEBUTTONUP:
+	 {
+	    switch (event.button.button)
+	    {
+	       case SDL_BUTTON_LEFT:
+	       {
+		  completePanning(event);
+	       }
+	       break;
+	    }
+	 }
+	 break;
 	 
 	 case SDL_KEYDOWN:
 	 {
 	    switch (event.key.keysym.sym)
 	    {
 	       case SDLK_ESCAPE:
-	       { key_quit = true; break; }
+	       { key_quit = true; }
+	       break;
 
 	       case SDLK_w:
-	       { key_w += now - event.key.timestamp; ++num_w; break; }
+	       { key_w += now - event.key.timestamp; ++num_w; }
+	       break;
 	       case SDLK_s:
-	       { key_s += now - event.key.timestamp; ++num_s; break; }
+	       { key_s += now - event.key.timestamp; ++num_s; }
+	       break;
 	       case SDLK_a:
-	       { key_a += now - event.key.timestamp; ++num_a; break; }
+	       { key_a += now - event.key.timestamp; ++num_a; }
+	       break;
 	       case SDLK_d:
-	       { key_d += now - event.key.timestamp; ++num_d; break; }
+	       { key_d += now - event.key.timestamp; ++num_d; }
+	       break;
 	    }
-
-	    break;
 	 }
+	 break;
 
 	 case SDL_KEYUP:
 	 {
@@ -144,39 +243,47 @@ void sdlInstance::pollEvents()
 	       {
 		  if (dt >= key_w) { key_w = 0; }
 		  else { key_w -= dt; }
-		  break;
 	       }
+	       break;
 	       case SDLK_s:
 	       {
 		  if (dt >= key_s) { key_s = 0; }
 		  else { key_s -= dt; }
-		  break;
 	       }
+	       break;
 	       case SDLK_a:
 	       {
 		  if (dt >= key_a) { key_a = 0; }
 		  else { key_a -= dt; }
-		  break;
 	       }
+	       break;
 	       case SDLK_d:
 	       {
 		  if (dt >= key_d) { key_d = 0; }
 		  else { key_d -= dt; }
-		  break;
 	       }
+	       break;
 	    }
-
-	    break;
 	 }
+	 break;
       }
+   }
+
+   //If still panning (click has not been released during
+   //frame), rotate
+   if (panning)
+   {
+      completePanning();
    }
 
    then = now;
 }
 
-bool sdlInstance::getQuit() const { return key_quit; }
+bool
+sdlInstance::getQuit() const { return key_quit; }
 
-uint32_t sdlInstance::takeW()
+uint32_t
+sdlInstance::takeW()
 {
    uint32_t result = key_w;
 
@@ -185,7 +292,8 @@ uint32_t sdlInstance::takeW()
    return result;
 }
 
-uint32_t sdlInstance::takeS()
+uint32_t
+sdlInstance::takeS()
 {
    uint32_t result = key_w;
 
@@ -194,7 +302,8 @@ uint32_t sdlInstance::takeS()
    return result;
 }
 
-uint32_t sdlInstance::takeA()
+uint32_t
+sdlInstance::takeA()
 {
    uint32_t result = key_a;
 
@@ -203,7 +312,8 @@ uint32_t sdlInstance::takeA()
    return result;
 }
 
-uint32_t sdlInstance::takeD()
+uint32_t
+sdlInstance::takeD()
 {
    uint32_t result = key_d;
 
@@ -217,7 +327,8 @@ uint32_t sdlInstance::takeNumS() { uint32_t result = num_s; num_s = 0; return re
 uint32_t sdlInstance::takeNumA() { uint32_t result = num_a; num_a = 0; return result; }
 uint32_t sdlInstance::takeNumD() { uint32_t result = num_d; num_d = 0; return result; }
 
-bool sdlInstance::hasWindowChanged(int& x, int& y)
+bool
+sdlInstance::hasWindowChanged(int& x, int& y)
 {
    int oldX = windowX;
    int oldY = windowY;
@@ -232,4 +343,10 @@ bool sdlInstance::hasWindowChanged(int& x, int& y)
 
    //Whether it's changed
    return (oldX == windowX) && (oldY == windowY);
+}
+
+void
+sdlInstance::getMouseDelta(int& x, int& y) const
+{
+   x = mouseDX; y = mouseDY;
 }

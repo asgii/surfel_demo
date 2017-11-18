@@ -149,11 +149,19 @@ camera::rotateY(uint32_t dt, bool ccw)
 {
    const geom::vec3 y = geom::vec3(0.f, 1.f, 0.f);
 
-   const float angle = 0.0005;
+   const float angle = 0.000005;
 
    float rot = angle * dt;
 
    rotate(geom::axisAngle(y, ccw ? -rot : rot));
+}
+
+void
+camera::rotateX(int dx)
+{
+   const float angle = 0.000005;
+
+   rotate(geom::axisAngle(getDirX(), angle * (float) dx));
 }
 
 void
