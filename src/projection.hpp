@@ -30,7 +30,20 @@ public:
       ,	nearDZ (nuNearDZ), planesDZ (nuPlanesDZ)
    {}
 
+   /*
+     Get a matrix factoring in the position and rotation of the camera.
+     This must be inverse because you're not actually using it on the
+     camera, but on all other objects; the camera can remain at
+     origin. That way movement of the camera will be registered visibly
+     in the movement of the other objects. (It's done this way because
+     it's simpler to render things with the viewpoint at origin. For one
+     thing you only need this one transform matrix rather than a
+     camera-relative transform for every object.)
+   */
    geom::mat4 getInverseTransformMatrix() const;
+
+   //Get a matrix factoring in the properties of the 'lens' and the
+   //application of perspective (ie dividing x and y by z).
    geom::mat4 getPerspectiveMatrix() const;
 
    geom::vec3 getPos() const;
@@ -63,7 +76,11 @@ public:
    void pushTransformMatrix();
 
    //Rotate around Y or X axes
+   //(Difference in unsigned/signed to simplify interface with SDL;
+   //better would be to have middle interface between the two)
    void rotateY(uint32_t dt, bool ccw);
    void rotateX(int dx);
+
    void moveZ(uint32_t dt, bool forward);
+   void moveX(uint32_t dt, bool right);
 };

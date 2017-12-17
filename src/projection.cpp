@@ -16,16 +16,6 @@ frustum::getDirX() const
 
 geom::mat4
 frustum::getInverseTransformMatrix() const
-/*
-  Get a matrix factoring in the position and rotation of the camera.
-  This must be inverse because you're not actually using it on the
-  camera, but on all other objects; the camera can remain at
-  origin. That way movement of the camera will be registered visibly
-  in the movement of the other objects. (It's done this way because
-  it's simpler to render things with the viewpoint at origin. For one
-  thing you only need this one transform matrix rather than a
-  camera-relative transform for every object.)
-*/
 {
    geom::vec3 inversePos = pos.inverse();
 
@@ -47,7 +37,7 @@ frustum::getInverseTransformMatrix() const
 #if 0
       return (geom::mat4(dirX[0], dirX[1], dirX[2], 0.f,
 			 dirY[0], dirY[1], dirY[2], 0.f,
-			 dirZ[0], dirZ[1], dirZ[2], 0.f,
+			 -dirZ[0], -dirZ[1], -dirZ[2], 0.f,
 			 0.f, 0.f, 0.f, 1.f)
 	      *
 	      geom::mat4(1.f, 0.f, 0.f, 0.f,
@@ -72,9 +62,11 @@ frustum::getInverseTransformMatrix() const
 		   dirY[2] * inversePos[1] +
 		   dirZ[2] * inversePos[2]);
 
-   return geom::mat4(dirX[0], dirY[0], dirZ[0], 0.f,
-		     dirX[1], dirY[1], dirZ[1], 0.f,
-		     dirX[2], dirY[2], dirZ[2], 0.f,
+   return geom::mat4(dirX[2], dirY[2], -dirZ[2], 0.f,
+		     dirX[1], dirY[1], -dirZ[1], 0.f,
+		     dirX[0], dirY[0], -dirZ[0], 0.f,
+		     
+      
 		     nuPosX, nuPosY, nuPosZ, 1.f);
 }
 
@@ -147,13 +139,17 @@ camera::rotate(geom::axisAngle aa)
 void
 camera::rotateY(uint32_t dt, bool ccw)
 {
-   const geom::vec3 y = geom::vec3(0.f, 1.f, 0.f);
+   geom::vec3 y = dirY;
 
    const float angle = 0.000005;
 
    float rot = angle * dt;
 
-   rotate(geom::axisAngle(y, ccw ? -rot : rot));
+   geom::quaternion qu = geom::quaternion(geom::axisAngle(y,
+							  ccw ? -rot : rot));
+
+   //Need only rotate Z as long as the axis is in fact Y
+   dirZ = qu.rotate(dirZ);
 }
 
 void
@@ -161,6 +157,7 @@ camera::rotateX(int dx)
 {
    const float angle = 0.000005;
 
+   //Rotating around x should rotate both Y and Z
    rotate(geom::axisAngle(getDirX(), angle * (float) dx));
 }
 
@@ -169,5 +166,13 @@ camera::moveZ(uint32_t dt, bool forward)
 {
    const float speed = 5.f;
 
-   pos = pos + getZ() * (float) dt * (forward ? speed : -speed);   
+   pos = pos + dirZ * (float) dt * (forward ? speed : -speed);   
+}
+
+void
+camera::moveX(uint32_t dt, bool right)
+{
+   const float speed = 5.f;
+
+   pos = pos + getDirX() * (float) dt * (right ? speed : -speed);
 }

@@ -3,6 +3,7 @@
 #define GEOM_CPP
 #define GEOM_IMPL
 #include "../lib/geom/geom.h"
+#undef GEOM_IMPL
 
 #include "compute.hpp"
 #include "projection.hpp"
@@ -52,11 +53,11 @@ handleEvents(sdlInstance& inst, camera& cam)
 
    if (numA or numD)
    {
-      bool cw = numD > numA;
+      bool right = numD > numA;
 
       uint32_t sum = max(numD, numA) - min(numD, numA);
 
-      cam.rotateY(sum, cw);
+      cam.moveX(sum, right);
 
       cameraMoved = true;
    }
